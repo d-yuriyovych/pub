@@ -1,7 +1,12 @@
 (function () {
     'use strict';
 
-    Lampa.Plugins.add('server_switcher', function (object) {
+    // Щоб уникнути дублікатів, перевіряємо чи плагін вже запущено
+    if (window.server_changer_installed) return;
+    window.server_changer_installed = true;
+
+    function ServerChanger() {
+        var _this = this;
         var servers = [
             { name: 'Lampa (MX)', url: 'http://lampa.mx' },
             { name: 'Lampa (Koyeb)', url: 'https://central-roze-d-yuriyovych-74a9dc5c.koyeb.app/' },
@@ -9,73 +14,93 @@
             { name: 'Lampa (NNMTV)', url: 'http://lam.nnmtv.pw' }
         ];
 
-        // Функція для перевірки статусу (Ping)
-        function checkStatus(callback) {
+        this.init = function () {
+            this.addSettings();
+            this.addMenu();
+            this.addToHeader();
+        };
+
+        this.checkAndOpen = function () {
             var count = 0;
-            Lampa.Noty.show('Перевірка серверів...');
+            Lampa.Noty.show('Перевірка зв\'язку...');
+            
             servers.forEach(function (s) {
                 var start = Date.now();
                 var img = new Image();
                 img.onload = function () { s.status = 'online'; s.ping = Date.now() - start; next(); };
                 img.onerror = function () { s.status = 'online'; s.ping = Date.now() - start; next(); };
                 img.src = s.url + '/favicon.ico?' + Math.random();
-                setTimeout(function () { if (!s.status) { s.status = 'offline'; next(); } }, 3000);
+                setTimeout(function () { if (!s.status) { s.status = 'offline'; next(); } }, 2500);
             });
+
             function next() {
                 count++;
-                if (count === servers.length) callback();
+                if (count === servers.length) _this.openSelect();
             }
-        }
+        };
 
-        // Функція відкриття вікна вибору
-        function openSwitcher() {
-            checkStatus(function () {
-                Lampa.Select.show({
-                    title: 'Вибір сервера',
-                    items: servers.map(function (s) {
-                        return {
-                            title: s.name,
-                            subtitle: s.status === 'online' ? '<span style="color:#4caf50">● Доступний</span> (' + s.ping + 'ms)' : '<span style="color:#f44336">● Офлайн</span>',
-                            server: s
-                        };
-                    }),
-                    onSelect: function (item) {
-                        if (item.server.status !== 'online') {
-                            Lampa.Noty.show('Сервер недоступний!');
-                            return;
-                        }
-                        Lampa.Storage.set('server_url', item.server.url); // Міняємо основний сервер
-                        Lampa.Noty.show('Сервер змінено на: ' + item.server.name);
-                        setTimeout(function () { location.reload(); }, 1000);
-                    },
-                    onBack: function () {
-                        Lampa.Controller.toggle('content');
+        this.openSelect = function () {
+            Lampa.Select.show({
+                title: 'Оберіть сервер',
+                items: servers.map(function (s) {
+                    return {
+                        title: s.name,
+                        subtitle: s.status === 'online' ? 'Працює (' + s.ping + 'ms)' : 'Недоступний',
+                        server: s,
+                        ghost: s.status !== 'online' // Візуально приглушаємо недоступні
+                    };
+                }),
+                onSelect: function (item) {
+                    if (item.server.status !== 'online') {
+                        Lampa.Noty.show('Цей сервер зараз лежить');
+                        return;
                     }
-                });
+                    // Зміна сервера та збереження
+                    Lampa.Storage.set('server_url', item.server.url);
+                    Lampa.Noty.show('Готово! Перезавантаження...');
+                    setTimeout(function () { location.reload(); }, 1000);
+                },
+                onBack: function () {
+                    Lampa.Controller.toggle('content');
+                }
             });
-        }
+        };
 
-        // 1. Додаємо в Налаштування (Розділ "Інтерфейс")
-        Lampa.Settings.listener.follow('open', function (e) {
-            if (e.name == 'interface') {
-                var item = $('<div class="settings-param selector" data-type="button"><div class="settings-param__name">Змінити сервер</div><div class="settings-param__value">Список доступних</div></div>');
-                item.on('hover:enter', openSwitcher);
-                e.body.find('.settings-list').append(item);
+        this.addSettings = function () {
+            Lampa.Settings.listener.follow('open', function (e) {
+                if (e.name == 'interface') {
+                    var btn = $('<div class="settings-param selector" data-type="button" data-name="server_changer_btn"><div class="settings-param__name">Server Changer</div><div class="settings-param__value">Змінити адресу сервера</div></div>');
+                    btn.on('hover:enter', _this.checkAndOpen);
+                    e.body.find('.settings-list').append(btn);
+                }
+            });
+        };
+
+        this.addMenu = function () {
+            Lampa.Menu.add({
+                id: 'server_changer',
+                title: 'Змінити сервер',
+                icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 15V19H5V15H19ZM20 13H4C3.45 13 3 13.45 3 14V20C3 20.55 3.45 21 4 21H20C20.55 21 21 20.55 21 20V14C21 13.45 20.55 13 20 13ZM19 5V9H5V5H19ZM20 3H4C3.45 3 3 3.45 3 4V10C3 10.55 3.45 11 4 11H20C20.55 11 21 10.55 21 10V4C21 3.45 20.55 3 20 3Z" fill="currentColor"/></svg>',
+                onSelect: _this.checkAndOpen
+            });
+        };
+
+        this.addToHeader = function () {
+            var head = $('.header__items');
+            if (head.length && !head.find('.server-changer-ico').length) {
+                var btn = $('<div class="header__item selector server-changer-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg></div>');
+                btn.on('hover:enter', _this.checkAndOpen);
+                head.prepend(btn);
             }
+        };
+    }
+
+    // Запуск після готовності системи
+    if (window.appready) {
+        new ServerChanger().init();
+    } else {
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type == 'ready') new ServerChanger().init();
         });
-
-        // 2. Додаємо в Бічне меню
-        Lampa.Menu.add({
-            id: 'server_switcher',
-            title: 'Сервери',
-            icon: '<svg height="36" viewBox="0 0 24 24" width="36" fill="currentColor"><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.68-1.5-1.5s.68-1.5 1.5-1.5 1.5.68 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5C6.18 8.5 5.5 7.82 5.5 7S6.18 5.5 7 5.5s1.5.68 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>',
-            onSelect: openSwitcher
-        });
-
-        // 3. Додаємо в Шапку
-        var header_item = $('<div class="header__item selector"><svg height="24" viewBox="0 0 24 24" width="24" fill="white"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.68-1.5-1.5s.68-1.5 1.5-1.5 1.5.68 1.5 1.5-.68 1.5-1.5 1.5zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5C6.18 8.5 5.5 7.82 5.5 7S6.18 5.5 7 5.5s1.5.68 1.5 1.5-.68 1.5-1.5 1.5z"/></svg></div>');
-        header_item.on('hover:enter', openSwitcher);
-        $('.header__items').prepend(header_item);
-
-    });
+    }
 })();
