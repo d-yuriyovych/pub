@@ -21,7 +21,7 @@
                     Lampa.Storage.set('online_proxy_url', serv.url);
                     Lampa.Storage.set('proxy_url', serv.url);
                     Lampa.Storage.set('proxy_address', serv.url);
-                    Lampa.Noty.show('Зміна сервера... Перезавантаження');
+                    Lampa.Noty.show('Сервер змінено. Перезавантаження...');
                     setTimeout(function(){ location.reload(); }, 400);
                 });
                 list_container.append(item);
@@ -40,52 +40,47 @@
         });
     }
 
-    // --- ТВІЙ МЕТОД (SettingsApi) ---
+    // --- ТВІЙ МЕТОД (Пряма вставка в налаштування) ---
     function initSettings() {
         var SettingsApi = Lampa.SettingsApi || Lampa.Settings;
-        if (!SettingsApi || !SettingsApi.addParam) return;
-
-        // Додаємо параметр прямо в розділ 'main' (головний екран налаштувань)
-        SettingsApi.addParam({
-            component: 'main',
-            param: {
-                name: 'server_manager_btn',
-                type: 'button'
-            },
-            field: {
-                name: 'Зміна сервера',
-                description: 'Вибрати адресу підключення'
-            },
-            onChange: function () {
-                showManager();
-            }
-        });
+        if (SettingsApi && SettingsApi.addParam) {
+            SettingsApi.addParam({
+                component: 'main', // Прямо в головний список
+                param: {
+                    name: 'custom_proxy_server',
+                    type: 'button'
+                },
+                field: {
+                    name: 'Зміна сервера',
+                    description: 'Вибрати адресу підключення'
+                },
+                onChange: function () {
+                    showManager();
+                }
+            });
+        }
     }
 
     function addOthers() {
         // Шапка
         if ($('.head__actions').length && !$('.head__server-btn').length) {
-            var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"/></svg></div>');
-            btn.on('hover:enter', function() { showManager(); });
+            var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg></div>');
+            btn.on('hover:enter', showManager);
             $('.head__actions').prepend(btn);
         }
 
-        // Бічне меню (Виправлення помилки)
+        // Бічне меню
         if ($('.menu__list').length && !$('.menu__server-btn').length) {
             var m_item = $('<li class="menu__item selector menu__server-btn"><div class="menu__ico"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"/></svg></div><div class="menu__text">Зміна сервера</div></li>');
-            
             m_item.on('hover:enter', function() {
                 Lampa.Menu.hide();
-                // Помилка була тут: Lampa іноді не встигає перемкнути контролер
-                // Викликаємо через невеликий таймаут, щоб не було конфлікту
-                setTimeout(showManager, 10);
+                setTimeout(showManager, 100); // Таймаут, щоб не було помилки фокусу
             });
-            
             $('.menu__list').append(m_item);
         }
     }
 
-    // Запуск точно як у Bandera (через перевірку готовності)
+    // Старт
     if (window.appready) {
         initSettings();
         addOthers();
@@ -98,6 +93,5 @@
         });
     }
 
-    // Постійна перевірка для шапки/меню
     setInterval(addOthers, 2000);
 })();
