@@ -13,86 +13,69 @@
         this.init = function () {
             this.addStyles();
             
-            // Пряма вставка в бокове меню (зліва)
-            Lampa.Listener.follow('menu', function (e) {
-                if (e.type == 'ready' && !$('.menu__list [data-action="srv_switch"]').length) {
-                    var item = $('<li class="menu__item selector" data-action="srv_switch"><div class="menu__text">Зміна сервера</div></li>');
-                    item.on('hover:enter', function () { _this.open(); });
-                    $('.menu__list').append(item);
+            // "Силовий" метод додавання в меню - перевірка щосекунди
+            setInterval(function() {
+                // В бічне меню зліва
+                if ($('.menu__list').length && !$('.menu__item[data-action="srv_sw"]').length) {
+                    var m = $('<li class="menu__item selector" data-action="srv_sw"><div class="menu__text">Зміна сервера</div></li>');
+                    m.on('hover:enter', _this.open);
+                    $('.menu__list').append(m);
                 }
-            });
-
-            // Пряма вставка в Налаштування
-            Lampa.Settings.listener.follow('open', function (e) {
-                if (e.name == 'main' && !$('.settings__content [data-action="srv_switch"]').length) {
-                    var item = $('<div class="settings-folder selector" data-action="srv_switch"><div class="settings-folder__name">Зміна Сервера</div></div>');
-                    item.on('hover:enter', function () { _this.open(); });
-                    $('.settings__content .settings-folder').eq(0).after(item);
+                // В налаштування
+                if ($('.settings__content').length && !$('.settings-folder[data-action="srv_sw"]').length) {
+                    var s = $('<div class="settings-folder selector" data-action="srv_sw"><div class="settings-folder__name">Зміна Сервера</div></div>');
+                    s.on('hover:enter', _this.open);
+                    $('.settings__content .settings-folder').eq(0).after(s);
                 }
-            });
+            }, 1000);
         };
 
         this.addStyles = function() {
             var css = `
-                .srv-modal { padding: 15px; }
-                .srv-title { font-size: 1.2em; color: rgba(255,255,255,0.4); margin: 15px 0 10px 0; text-transform: uppercase; font-weight: bold; }
-                .srv-item { padding: 15px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+                .srv-modal { padding: 10px; }
+                .srv-cap { font-size: 1.1em; color: rgba(255,255,255,0.4); margin: 15px 0 10px 5px; font-weight: bold; }
+                .srv-item { padding: 15px; margin-bottom: 5px; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
                 .srv-item.focus { background: rgba(255,255,255,0.15); border: 1px solid #fff; }
-                
-                /* Поточний сервер: Жовтий, не клікається */
-                .srv-item.is-current { color: #ffc107 !important; border: 1px solid #ffc107; pointer-events: none; }
-                .srv-item.is-current .srv-name { color: #ffc107; }
-                
-                /* Кольорові назви */
-                .srv-name { font-weight: bold; font-size: 1.1em; }
-                .srv-online .srv-name { color: #00ff44; }
-                .srv-offline .srv-name { color: #ff0000; }
-                
+                .srv-name { font-weight: bold; font-size: 1.2em; }
+                .srv-item.is-curr { color: #ffc107; border: 1px solid #ffc107; pointer-events: none; }
+                .srv-item.is-curr .srv-name { color: #ffc107; }
+                .srv-on .srv-name { color: #00ff44; }
+                .srv-off .srv-name { color: #ff0000; }
                 .srv-dot { width: 10px; height: 10px; border-radius: 50%; background: #444; }
-                .srv-online .srv-dot { background: #00ff44; }
-                .srv-offline .srv-dot { background: #ff0000; }
+                .srv-on .srv-dot { background: #00ff44; }
+                .srv-off .srv-dot { background: #ff0000; }
             `;
-            if (!$('#srv-switcher-styles').length) $('body').append('<style id="srv-switcher-styles">' + css + '</style>');
+            if (!$('#srv-css').length) $('body').append('<style id="srv-css">' + css + '</style>');
         };
 
         this.open = function () {
             var html = $('<div class="srv-modal"></div>');
-            var current_host = window.location.hostname;
-            var current_srv = servers.find(s => s.url.indexOf(current_host) > -1);
+            var host = window.location.hostname;
+            var current = servers.find(s => s.url.indexOf(host) > -1);
 
-            // 1. Блок поточного сервера
-            if (current_srv) {
-                html.append('<div class="srv-title">Поточний сервер</div>');
-                html.append('<div class="srv-item is-current"><span class="srv-name">' + current_srv.name + '</span><div class="srv-dot srv-online"></div></div>');
+            if (current) {
+                html.append('<div class="srv-cap">Поточний сервер</div>');
+                html.append('<div class="srv-item is-curr"><span class="srv-name">' + current.name + '</span><div class="srv-dot srv-on"></div></div>');
             }
 
-            // 2. Блок списку
-            html.append('<div class="srv-title">Список серверів</div>');
-            var list = $('<div class="srv-list"></div>');
-            html.append(list);
-
+            html.append('<div class="srv-cap">Список серверів</div>');
             servers.forEach(function (s) {
-                if (current_srv && s.url === current_srv.url) return; // Пропускаємо поточний у списку вибору
-
+                if (current && s.url === current.url) return;
                 var item = $('<div class="srv-item selector"><span class="srv-name">' + s.name + '</span><div class="srv-dot"></div></div>');
-                list.append(item);
+                html.append(item);
 
-                // Перевірка доступності
                 fetch(s.url + '?t=' + Date.now(), { mode: 'no-cors' }).then(function() {
-                    item.addClass('srv-online').find('.srv-dot').addClass('srv-online');
+                    item.addClass('srv-on').find('.srv-dot').addClass('srv-on');
                 }).catch(function() {
-                    item.addClass('srv-offline').find('.srv-dot').addClass('srv-offline');
+                    item.addClass('srv-off').find('.srv-dot').addClass('srv-off');
                 });
 
                 item.on('hover:enter', function () {
-                    // Фікс для Android (збереження перед рестартом)
                     Lampa.Storage.set('source', s.url);
                     Lampa.Storage.set('proxy_url', s.url);
-                    Lampa.Noty.show('Зміна сервера...');
-                    setTimeout(function() { window.location.replace(s.url); }, 500);
+                    window.location.replace(s.url);
                 });
             });
-
             Lampa.Modal.open({ title: 'Вибір сервера', html: html, size: 'medium' });
         };
     }
