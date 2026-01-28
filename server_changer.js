@@ -1,23 +1,21 @@
 (function () {
-    // 1. Список серверів
     var servers = [
         { title: 'Основний Сервер', url: 'http://server1.com' },
         { title: 'Дзеркало Європа', url: 'http://server2.com' },
         { title: 'Резерв UA', url: 'http://server3.com' }
     ];
 
-    // 2. Функція виклику модального вікна
     function showManager() {
         var current_url = Lampa.Storage.get('online_proxy_url') || '';
         var current_server = servers.find(function(s) { return s.url === current_url; }) || { title: 'Невідомий', url: current_url };
 
         var html = $('<div class="server-manager"></div>');
 
-        // Заголовок Поточний сервер (Жовтий)
+        // 1. Поточний сервер (Жовтий)
         html.append('<div style="color: #fff; font-size: 1.1em; margin-bottom: 5px; opacity: 0.8;">Поточний сервер:</div>');
         html.append('<div style="color: #ffc107; font-size: 1.5em; margin-bottom: 25px; font-weight: bold; pointer-events: none;">' + current_server.title + '</div>');
 
-        // Заголовок Список серверів
+        // 2. Список серверів
         html.append('<div style="color: #fff; font-size: 1.1em; margin-bottom: 10px; opacity: 0.8;">Список серверів:</div>');
         var list_container = $('<div class="server-list" style="margin-bottom: 20px;"></div>');
         var selected_url = '';
@@ -53,7 +51,7 @@
         });
         html.append(list_container);
 
-        // Кнопка Змінити сервер
+        // 3. Кнопка Змінити сервер
         var btn_change = $('<div class="simple-button selector" style="background: #fff; color: #000; text-align: center; border-radius: 10px; font-weight: bold; padding: 15px; margin-top: 10px;">Змінити сервер</div>');
         btn_change.on('hover:enter', function () {
             if (selected_url) {
@@ -79,9 +77,8 @@
         });
     }
 
-    // 3. Ініціалізація точок входу
-    function init() {
-        // --- 3.1. ШАПКА ---
+    function startPlugin() {
+        // --- ШАПКА ---
         setInterval(function() {
             if ($('.head__actions').length && !$('.head__server-btn').length) {
                 var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg></div>');
@@ -90,7 +87,7 @@
             }
         }, 3000);
 
-        // --- 3.2. БІЧНЕ МЕНЮ ---
+        // --- БІЧНЕ МЕНЮ ---
         var menuObserver = new MutationObserver(function() {
             if ($('.menu__list').length && !$('.menu__item[data-action="server_change"]').length) {
                 var m_item = $('<li class="menu__item selector" data-action="server_change"><div class="menu__ico"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"></svg></div><div class="menu__text">Зміна сервера</div></li>');
@@ -103,27 +100,39 @@
         });
         menuObserver.observe(document.body, { childList: true, subtree: true });
 
-        // --- 3.3. НАЛАШТУВАННЯ (Офіційний метод) ---
-        // Додаємо новий розділ в налаштування, який буде завжди видимий
+        // --- НАЛАШТУВАННЯ (Метод примусового вклинення в рендер) ---
         Lampa.Settings.listener.follow('open', function (e) {
             if (e.name == 'main') {
-                var timer = setInterval(function(){
-                    var body = e.body.find('.settings-list');
-                    if(body.length){
-                        clearInterval(timer);
-                        if(!body.find('.settings-server-btn').length){
-                            var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle"><div class="settings-param__name">Зміна сервера</div><div class="settings-param__value">Відкрити менеджер</div></div>');
-                            s_item.on('hover:enter', showManager);
-                            body.append(s_item);
-                            Lampa.Controller.enable('settings_list');
+                // Видаляємо стару кнопку, якщо вона є
+                $('.settings-server-btn').remove();
+                
+                // Чекаємо мілісекунду, поки Lampa підготує список
+                setTimeout(function() {
+                    var list = e.body.find('.settings-list');
+                    if (list.length) {
+                        var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle">' +
+                            '<div class="settings-param__name">Зміна сервера</div>' +
+                            '<div class="settings-param__value">Відкрити менеджер</div>' +
+                        '</div>');
+                        
+                        s_item.on('hover:enter', showManager);
+                        
+                        // Вставляємо ПЕРЕД останнім пунктом (зазвичай це "Про систему")
+                        if (list.find('.settings-param').length > 0) {
+                            list.find('.settings-param').last().before(s_item);
+                        } else {
+                            list.append(s_item);
                         }
+                        
+                        // Обов'язково повідомляємо контролер про новий елемент
+                        Lampa.Controller.enable('settings_list');
                     }
-                }, 50);
+                }, 10);
             }
         });
     }
 
-    if (window.appready) init();
-    else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') init(); });
+    if (window.appready) startPlugin();
+    else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') startPlugin(); });
 
 })();
