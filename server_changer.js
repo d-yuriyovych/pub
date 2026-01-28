@@ -10,20 +10,22 @@
         var current_server = servers.find(function(s) { return s.url === current_url; }) || { title: 'Невідомий', url: current_url };
 
         var html = $('<div class="server-manager"></div>');
-        html.append('<div style="color: #fff; margin-bottom: 5px; opacity: 0.8;">Поточний сервер:</div>');
-        html.append('<div style="color: #ffc107; font-size: 1.5em; margin-bottom: 25px; font-weight: bold;">' + current_server.title + '</div>');
+        html.append('<div style="margin-bottom: 10px; opacity: 0.6;">Поточний сервер:</div>');
+        html.append('<div style="color: #ffc107; font-size: 1.4em; margin-bottom: 20px; font-weight: bold;">' + current_server.title + '</div>');
 
         var list_container = $('<div class="server-list"></div>');
         servers.forEach(function (serv) {
             if (serv.url !== current_url) {
-                var item = $('<div class="navigation-item selector" style="padding: 15px; border-radius: 8px; margin-bottom: 8px; background: rgba(255,255,255,0.08)">' + serv.title + '</div>');
+                var item = $('<div class="navigation-item selector" style="padding: 12px; border-radius: 8px; margin-bottom: 8px; background: rgba(255,255,255,0.08); cursor: pointer;">' + serv.title + '</div>');
+                
                 item.on('hover:enter', function () {
                     Lampa.Storage.set('online_proxy_url', serv.url);
                     Lampa.Storage.set('proxy_url', serv.url);
                     Lampa.Storage.set('proxy_address', serv.url);
-                    Lampa.Noty.show('Сервер змінено. Перезавантаження...');
-                    setTimeout(function(){ location.reload(); }, 500);
+                    Lampa.Noty.show('Зміна сервера... Перезавантаження');
+                    setTimeout(function(){ location.reload(); }, 400);
                 });
+                
                 list_container.append(item);
             }
         });
@@ -40,49 +42,51 @@
         });
     }
 
-    // --- ТА САМА ЧАСТИНА ЯКУ ТИ ДАВ (Адаптована під твій менеджер) ---
     function initSettings() {
         var SettingsApi = Lampa.SettingsApi || Lampa.Settings;
-        if (!SettingsApi || !SettingsApi.addComponent) return;
+        if (!SettingsApi || !SettingsApi.addParam) return;
 
-        // Створюємо розділ "Мій Сервер" у лівому меню налаштувань
-        SettingsApi.addComponent({
-            component: 'my_server_manager',
-            name: 'Мій Сервер',
-            icon: "<svg height=\"28\" viewBox=\"0 0 24 24\" width=\"28\" fill=\"currentColor\"><path d=\"M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z\"/></svg>"
-        });
-
-        // Додаємо кнопку всередину цього розділу
+        // Додаємо пункт прямо в розділ "Інтерфейс" або "Система", щоб не плодити підменю
+        // Якщо хочеш в самий корінь, використовуй component: 'main'
         SettingsApi.addParam({
-            component: 'my_server_manager',
+            component: 'main', 
             param: {
-                name: 'open_server_list',
+                name: 'custom_server_button',
                 type: 'button'
             },
             field: {
-                name: 'Відкрити список серверів'
+                name: 'Зміна сервера',
+                description: 'Вибрати іншу адресу підключення'
             },
-            onChange: function onChange() {
+            onChange: function () {
                 showManager();
             }
         });
     }
 
-    // Додаткові точки входу (Шапка/Меню)
     function addOthers() {
+        // Шапка
         if ($('.head__actions').length && !$('.head__server-btn').length) {
-            var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" fill=\"currentColor\"><path d=\"M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z\"/></svg></div>');
-            btn.on('hover:enter', showManager);
+            var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg></div>');
+            btn.on('hover:enter', function() { showManager(); });
             $('.head__actions').prepend(btn);
         }
+
+        // Бічне меню
         if ($('.menu__list').length && !$('.menu__server-btn').length) {
-            var m_item = $('<li class="menu__item selector menu__server-btn"><div class="menu__ico"><svg height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" fill=\"currentColor\"><path d=\"M15 15v4H5v-4h14\"/></svg></div><div class="menu__text">Зміна сервера</div></li>');
-            m_item.on('hover:enter', function() { Lampa.Menu.hide(); showManager(); });
+            var m_item = $('<li class="menu__item selector menu__server-btn"><div class="menu__ico"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"/></svg></div><div class="menu__text">Зміна сервера</div></li>');
+            
+            m_item.on('hover:enter', function() {
+                Lampa.Menu.hide();
+                // Використовуємо таймер, щоб меню встигло закритися і не ламало фокус
+                setTimeout(showManager, 100);
+            });
+            
             $('.menu__list').append(m_item);
         }
     }
 
-    // Запуск
+    // Ініціалізація
     if (window.appready) {
         initSettings();
         addOthers();
@@ -94,7 +98,6 @@
             }
         });
     }
-    
-    // Для Android/Таймер на шапку
-    setInterval(addOthers, 2000);
+
+    setInterval(addOthers, 3000);
 })();
