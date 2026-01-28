@@ -13,15 +13,16 @@
 
     var current_url = Lampa.Storage.get('server_url') || 'lampa.mx';
 
-    function openManager() {
+    // Головна функція інтерфейсу
+    function runChanger() {
+        Lampa.Noty.show('Перевірка серверів...');
         var selected_url = '';
-        Lampa.Noty.show('Перевірка зв\'язку...');
 
         var promises = servers.map(function(s) {
             return new Promise(function(resolve) {
                 var img = new Image();
                 var start = Date.now();
-                img.onload = img.onerror = function() { s.status = 'online'; s.ping = Date.now() - start; resolve(); };
+                img.onload = img.onerror = function() { s.status = 'online'; s.p = Date.now()-start; resolve(); };
                 img.src = s.url + '/favicon.ico?' + Math.random();
                 setTimeout(function() { if(!s.status) s.status = 'offline'; resolve(); }, 2000);
             });
@@ -31,94 +32,81 @@
             var items = servers.map(function(s) {
                 var is_curr = (s.url === current_url || s.url + '/' === current_url);
                 return {
-                    title: s.name + (is_curr ? ' 🟢' : ''),
-                    subtitle: s.status === 'online' ? '<span style="color:#46b85a">Online ('+s.ping+'ms)</span>' : '<span style="color:#d24a4a">Offline</span>',
+                    title: s.name + (is_curr ? ' — [ПОТОЧНИЙ]' : ''),
+                    subtitle: s.status === 'online' ? 'Доступний ('+s.p+'ms)' : 'НЕРОБОЧИЙ',
                     url: s.url,
                     ghost: s.status !== 'online'
                 };
             });
 
             items.push({
-                title: '<b style="color:#ffde1a">ЗМІНИТИ СЕРВЕР</b>',
+                title: '<b>ЗМІНИТИ СЕРВЕР</b>',
                 action: 'apply',
                 separator: true
             });
 
             Lampa.Select.show({
-                title: 'Поточний: ' + current_url,
+                title: 'Сервер: ' + current_url,
                 items: items,
                 onSelect: function(item) {
                     if (item.action === 'apply') {
                         if (selected_url) {
                             Lampa.Storage.set('server_url', selected_url);
-                            Lampa.Noty.show('Зміна сервера...');
-                            setTimeout(function() { location.reload(); }, 300);
-                        } else {
-                            Lampa.Noty.show('Спочатку виберіть сервер!');
-                        }
+                            location.reload();
+                        } else Lampa.Noty.show('Оберіть сервер зі списку!');
                     } else {
                         selected_url = item.url;
                         Lampa.Noty.show('Обрано: ' + item.title);
                     }
                 },
-                onBack: function() {
-                    Lampa.Controller.toggle('content');
-                }
+                onBack: function() { Lampa.Controller.toggle('content'); }
             });
         });
     }
 
-    // 1. РЕЄСТРАЦІЯ КОМПОНЕНТА (Логіка Bandera)
+    // Реєстрація компонента (як у Bandera Online)
     Lampa.Component.add('server_changer', function (object) {
         this.create = function () {};
         this.render = function () { return null; };
-        this.prepare = function () { openManager(); };
+        this.prepare = function () { runChanger(); };
         this.destroy = function () {};
     });
 
-    function init() {
-        // 2. ВСТАВКА В ШАПКУ (Залізобетонна)
-        var head_icon = $('<div class="head__action selector button--server-change"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>');
-        head_icon.on('click hover:enter', openManager);
+    function startPlugin() {
+        // 1. Пряме додавання в БІЧНЕ МЕНЮ (Side Menu)
+        var menu_item = {
+            id: 'server_changer',
+            title: 'Змінити сервер',
+            icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+            onSelect: runChanger
+        };
+        Lampa.Menu.add(menu_item);
+
+        // 2. Пряме додавання в НАЛАШТУВАННЯ (через хук рендеру)
+        Lampa.Listener.follow('settings', function (e) {
+            if (e.type === 'open') {
+                setTimeout(function() {
+                    if ($('.settings-folder[data-component="server_changer"]').length) return;
+                    var btn = $('<div class="settings-folder selector" data-component="server_changer"><div class="settings-folder__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="2" y="3" width="20" height="18" rx="2" stroke="white" stroke-width="2"/><path d="M2 10h20M2 15h20" stroke="white" stroke-width="2"/></svg></div><div class="settings-folder__name">Server Changer</div></div>');
+                    btn.on('click', runChanger);
+                    $('.settings__content').append(btn);
+                    Lampa.Controller.update();
+                }, 100);
+            }
+        });
+
+        // 3. Додавання в ШАПКУ (Head)
+        var head_btn = $('<div class="head__action selector button--server-change"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></div>');
+        head_btn.on('click', runChanger);
         
         setInterval(function() {
             if ($('.head__actions').length && !$('.button--server-change').length) {
-                $('.head__actions').prepend(head_icon);
+                $('.head__actions').prepend(head_btn);
             }
         }, 1000);
-
-        // 3. ВСТАВКА В БІЧНЕ МЕНЮ
-        Lampa.Menu.add({
-            id: 'server_changer_menu',
-            title: 'Змінити сервер',
-            icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.09-.36.18-.57.18s-.41-.09-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.09.36-.18.57-.18s.41.09.57.18l7.9 4.44c.32.17.53.5.53.88v9z"/></svg>',
-            onSelect: openManager
-        });
-
-        // 4. ВСТАВКА В НАЛАШТУВАННЯ (Метод прямого додавання)
-        Lampa.Listener.follow('settings', function (e) {
-            if (e.type === 'open' && e.name === 'main') {
-                setTimeout(function() {
-                    var btn = $('<div class="settings-folder selector" data-component="server_changer">' +
-                        '<div class="settings-folder__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 10h20M2 15h20"/></svg></div>' +
-                        '<div class="settings-folder__name">Server Changer</div>' +
-                    '</div>');
-                    
-                    btn.on('click hover:enter', function() {
-                        Lampa.Activity.push({
-                            title: 'Server Changer',
-                            component: 'server_changer'
-                        });
-                    });
-
-                    $('.settings__content').append(btn);
-                    Lampa.Controller.update(); 
-                }, 10);
-            }
-        });
     }
 
-    if (window.appready) init();
-    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') init(); });
-
+    // Офіційний старт
+    if (window.appready) startPlugin();
+    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') startPlugin(); });
 })();
