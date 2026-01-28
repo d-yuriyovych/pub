@@ -1,98 +1,210 @@
 (function () {
     'use strict';
 
-    var LampaServerChanger = function (api) {
-        var servers = [
-            { name: 'Lampa (MX)', url: 'http://lampa.mx' },
-            { name: 'Lampa (Koyeb)', url: 'https://central-roze-d-yuriyovych-74a9dc5c.koyeb.app/' },
-            { name: 'Lampa (VIP)', url: 'http://lampa.vip' },
-            { name: 'Lampa (NNMTV)', url: 'http://lam.nnmtv.pw' }
-        ];
+    const SERVERS = [
+        { name: 'Lampa (MX)', url: 'https://lampa.mx' },
+        { name: 'Lampa (Koyeb)', url: 'https://central-roze-d-yuriyovych-74a9dc5c.koyeb.app' },
+        { name: 'Lampa (VIP)', url: 'https://lampa.vip' },
+        { name: 'Lampa (NNMTV)', url: 'https://lam.nnmtv.pw' }
+    ];
 
-        var selected_url = '';
-        var current_url = Lampa.Storage.get('server_url') || 'lampa.mx';
+    let selected = null;
 
-        // Функція виклику вікна
-        function open() {
-            Lampa.Noty.show('Перевірка серверів...');
-            
-            var promises = servers.map(function(s) {
-                return new Promise(function(resolve) {
-                    var img = new Image();
-                    img.onload = img.onerror = function() { s.status = 'online'; resolve(); };
-                    img.src = s.url + '/favicon.ico?' + Math.random();
-                    setTimeout(function() { if(!s.status) s.status = 'offline'; resolve(); }, 2000);
-                });
+    /* =======================
+       Перевірка доступності
+    ======================== */
+    function checkServer(server, timeout = 4000) {
+        return new Promise(resolve => {
+            let finished = false;
+
+            const timer = setTimeout(() => {
+                if (!finished) resolve(false);
+            }, timeout);
+
+            fetch(server.url + '/manifest.json', {
+                method: 'GET',
+                mode: 'no-cors'
+            })
+            .then(() => {
+                finished = true;
+                clearTimeout(timer);
+                resolve(true);
+            })
+            .catch(() => {
+                finished = true;
+                clearTimeout(timer);
+                resolve(false);
             });
-
-            Promise.all(promises).then(function() {
-                var items = servers.map(function(s) {
-                    var is_curr = (s.url === current_url || s.url + '/' === current_url);
-                    return {
-                        title: s.name + (is_curr ? ' ✅' : ''),
-                        subtitle: s.status === 'online' ? '<span style="color:#46b85a">Онлайн</span>' : '<span style="color:#d24a4a">Офлайн</span>',
-                        url: s.url,
-                        ghost: s.status !== 'online'
-                    };
-                });
-
-                items.push({
-                    title: '<b style="color:#ffde1a">ЗМІНИТИ СЕРВЕР</b>',
-                    action: 'apply',
-                    separator: true
-                });
-
-                Lampa.Select.show({
-                    title: 'Поточний: ' + current_url,
-                    items: items,
-                    onSelect: function(item) {
-                        if (item.action === 'apply') {
-                            if (selected_url) {
-                                Lampa.Storage.set('server_url', selected_url);
-                                location.reload();
-                            } else Lampa.Noty.show('Спершу оберіть сервер!');
-                        } else {
-                            selected_url = item.url;
-                            Lampa.Noty.show('Обрано: ' + item.title);
-                        }
-                    },
-                    onBack: function() {
-                        Lampa.Controller.toggle('content');
-                    }
-                });
-            });
-        }
-
-        // Реєстрація в налаштуваннях
-        api.Settings.addComponent({
-            component: 'server_changer',
-            name: 'Server Changer',
-            icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 10h20M2 15h20"/></svg>'
         });
-
-        api.Component.add('server_changer', function () {
-            this.prepare = function () { open(); };
-            this.render = function () { return null; };
-        });
-
-        // Додавання в бічне меню
-        api.Menu.add({
-            id: 'server_changer',
-            title: 'Змінити сервер',
-            icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-            onSelect: open
-        });
-
-        // Додавання в шапку (через нативний метод додавання кнопок)
-        var head_btn = $('<div class="head__action selector button--server-change"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></div>');
-        head_btn.on('click', open);
-        
-        // Вставляємо в шапку
-        $('.head__actions').prepend(head_btn);
-    };
-
-    // Офіційний метод реєстрації плагіна в Lampa
-    if (window.Lampa) {
-        Lampa.Plugins.add('server_changer', LampaServerChanger);
     }
+
+    /* =======================
+       Зміна сервера (офіційно)
+    ======================== */
+    function changeServer(url) {
+        Lampa.Storage.set('server', url);
+
+        if (Lampa.Platform.is('android')) {
+            Lampa.Platform.restart();
+        } else {
+            Lampa.App.reload();
+        }
+    }
+
+    /* =======================
+       UI
+    ======================== */
+    function openUI() {
+
+        selected = null;
+        const current = Lampa.Storage.get('server');
+        const body = $('<div class="ss-body"></div>');
+        const apply = $('<div class="ss-apply disabled">Змінити сервер</div>');
+
+        apply.on('click', () => {
+            if (!apply.hasClass('disabled') && selected) {
+                changeServer(selected.url);
+            }
+        });
+
+        SERVERS.forEach(server => {
+
+            const item = $(`
+                <div class="ss-item loading">
+                    <div class="ss-name">${server.name}</div>
+                    <div class="ss-status">...</div>
+                </div>
+            `);
+
+            if (server.url === current) {
+                item.addClass('current');
+                item.find('.ss-status').text('Поточний');
+            }
+
+            checkServer(server).then(ok => {
+                item.removeClass('loading');
+
+                if (ok) {
+                    item.addClass('online');
+                    item.find('.ss-status').text('Онлайн');
+
+                    item.on('click', () => {
+                        $('.ss-item').removeClass('selected');
+                        item.addClass('selected');
+                        selected = server;
+                        apply.removeClass('disabled');
+                    });
+
+                } else {
+                    item.addClass('offline');
+                    item.find('.ss-status').text('Недоступний');
+                }
+            });
+
+            body.append(item);
+        });
+
+        body.append(apply);
+
+        Lampa.Layer.open({
+            title: 'Сервер Lampa',
+            content: body,
+            width: '50%'
+        });
+    }
+
+    /* =======================
+       Додавання в меню
+    ======================== */
+
+    function addToMenu() {
+
+        const item = {
+            title: 'Сервер Lampa',
+            icon: 'cloud',
+            onSelect: openUI
+        };
+
+        Lampa.Menu.add(item);
+
+        Lampa.Settings.add({
+            title: 'Сервер Lampa',
+            onSelect: openUI
+        });
+
+        Lampa.Header.add({
+            title: 'Сервер',
+            onSelect: openUI
+        });
+    }
+
+    /* =======================
+       Стилі
+    ======================== */
+    function addStyles() {
+        $('head').append(`
+            <style>
+                .ss-body {
+                    padding: 20px;
+                }
+                .ss-item {
+                    padding: 15px;
+                    margin-bottom: 12px;
+                    border-radius: 14px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    transition: all .3s;
+                }
+                .ss-item.online {
+                    background: linear-gradient(135deg, #1abc9c, #16a085);
+                }
+                .ss-item.offline {
+                    background: #555;
+                    opacity: 0.5;
+                }
+                .ss-item.current {
+                    border: 2px solid gold;
+                }
+                .ss-item.selected {
+                    box-shadow: 0 0 15px #00ffd5;
+                }
+                .ss-name {
+                    font-size: 18px;
+                }
+                .ss-status {
+                    font-size: 14px;
+                    opacity: 0.9;
+                }
+                .ss-apply {
+                    margin-top: 20px;
+                    padding: 15px;
+                    text-align: center;
+                    border-radius: 16px;
+                    background: linear-gradient(135deg, #3498db, #2980b9);
+                    font-size: 18px;
+                }
+                .ss-apply.disabled {
+                    opacity: 0.4;
+                }
+            </style>
+        `);
+    }
+
+    /* =======================
+       Ініціалізація
+    ======================== */
+    function init() {
+        addStyles();
+        addToMenu();
+    }
+
+    Lampa.Plugin({
+        name: 'Server Switcher',
+        version: '1.0.0',
+        description: 'Зміна серверів Lampa',
+        author: 'You',
+        onInit: init
+    });
+
 })();
