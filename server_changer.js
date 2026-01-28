@@ -1,11 +1,12 @@
 (function () {
+    // Список серверів (можна редагувати)
     var servers = [
         { title: 'Основний Сервер', url: 'http://server1.com' },
         { title: 'Дзеркало Європа', url: 'http://server2.com' },
         { title: 'Резерв UA', url: 'http://server3.com' }
     ];
 
-    // Створюємо порожній компонент, щоб Lampa не "сварилася" при виклику з меню
+    // Реєструємо компонент-заглушку для стабільності фокусу
     Lampa.Component.add('server_manager_plugin', function(){
         this.create = function(){ return null; };
         this.prepare = function(){};
@@ -18,9 +19,9 @@
 
         var html = $('<div class="server-manager"></div>');
 
-        // 1) Поточний сервер
+        // 1) Поточний сервер (Жовтий, не клікабельний)
         html.append('<div style="color: #fff; font-size: 1.2em; margin-bottom: 5px;">Поточний сервер:</div>');
-        html.append('<div class="current-server-name" style="color: #ffc107; font-size: 1.6em; margin-bottom: 25px; font-weight: bold; pointer-events: none;">' + current_server.title + '</div>');
+        html.append('<div style="color: #ffc107; font-size: 1.6em; margin-bottom: 25px; font-weight: bold; pointer-events: none;">' + current_server.title + '</div>');
 
         // 2) Список серверів
         html.append('<div style="color: #fff; font-size: 1.2em; margin-bottom: 10px;">Список серверів:</div>');
@@ -40,6 +41,7 @@
                     $(this).css('background', 'rgba(255,255,255,0.3)');
                 });
 
+                // Перевірка доступності (XMLHttpRequest для стабільності на Android)
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET', serv.url, true);
                 xhr.timeout = 4000;
@@ -62,11 +64,12 @@
         var btn_change = $('<div class="simple-button selector" style="background: #fff; color: #000; text-align: center; border-radius: 10px; font-weight: bold; padding: 15px;">Змінити сервер</div>');
         btn_change.on('hover:enter', function () {
             if (selected_url) {
+                // Записуємо в усі можливі ключі, щоб Android не скинув на дефолт
                 Lampa.Storage.set('online_proxy_url', selected_url);
                 Lampa.Storage.set('proxy_url', selected_url);
                 Lampa.Storage.set('proxy_address', selected_url);
                 
-                Lampa.Noty.show('Сервер змінено. Перезавантаження...');
+                Lampa.Noty.show('Зміна сервера... Перезавантаження');
                 setTimeout(function(){ location.reload(); }, 500);
             } else {
                 Lampa.Noty.show('Виберіть сервер зі списку');
@@ -85,46 +88,52 @@
         });
     }
 
+    // Функція ін'єкції кнопок (Шапка та Меню)
     function inject() {
-        // 1. Шапка (Head)
+        // Шапка
         if ($('.head__actions').length && !$('.head__server-btn').length) {
             var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg></div>');
             btn.on('hover:enter', showManager);
             $('.head__actions').prepend(btn);
         }
 
-        // 2. Бічне меню (Menu)
+        // Бічне меню
         if ($('.menu__list').length && !$('.menu__item[data-action="server_change"]').length) {
             var m_item = $('<li class="menu__item selector" data-action="server_change"><div class="menu__ico"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"></svg></div><div class="menu__text">Зміна сервера</div></li>');
             m_item.on('hover:enter', function() {
-                // Використовуємо нативне закриття меню перед відкриттям модалки
                 $('.menu').removeClass('menu--open');
+                Lampa.Controller.toggle('content'); 
                 showManager();
             });
             $('.menu__list').append(m_item);
         }
-
-        // 3. Налаштування (Settings) - Самий надійний метод
-        if ($('.settings-list').length && !$('.settings-server-btn').length) {
-            var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle"><div class="settings-param__name">Менеджер серверів</div><div class="settings-param__value">Змінити поточний</div></div>');
-            s_item.on('hover:enter', showManager);
-            // Вставляємо в кінець списку
-            $('.settings-list').append(s_item);
-        }
     }
 
-    // Слухаємо відкриття налаштувань через системний лістенер
+    // Окремий запуск для Налаштувань (системний метод)
     Lampa.Settings.listener.follow('open', function (e) {
-        // Чекаємо поки DOM налаштувань побудується
-        setTimeout(inject, 100);
+        if (e.name == 'main') {
+            var waitSettings = setInterval(function() {
+                var container = e.body.find('.settings-list');
+                if (container.length) {
+                    clearInterval(waitSettings);
+                    if (!container.find('.settings-server-btn').length) {
+                        var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle"><div class="settings-param__name">Менеджер серверів</div><div class="settings-param__value">Змінити адресу</div></div>');
+                        s_item.on('hover:enter', showManager);
+                        container.append(s_item);
+                        // Оновлюємо контролер, щоб пульт бачив нову кнопку
+                        Lampa.Controller.enable('settings_list');
+                    }
+                }
+            }, 50);
+        }
     });
 
-    // Спостерігач за DOM для Шапки та Меню
-    var observer = new MutationObserver(function() {
-        inject();
-    });
+    // Спостерігач для динамічних елементів (Шапка/Меню)
+    var observer = new MutationObserver(inject);
     observer.observe(document.body, { childList: true, subtree: true });
 
+    // Початкова ініціалізація
     if (window.appready) inject();
     else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') inject(); });
+
 })();
