@@ -5,15 +5,22 @@
         { title: 'Резерв UA', url: 'http://server3.com' }
     ];
 
+    // Створюємо порожній компонент, щоб Lampa не "сварилася" при виклику з меню
+    Lampa.Component.add('server_manager_plugin', function(){
+        this.create = function(){ return null; };
+        this.prepare = function(){};
+        this.render = function(){};
+    });
+
     function showManager() {
         var current_url = Lampa.Storage.get('online_proxy_url') || '';
         var current_server = servers.find(s => s.url === current_url) || { title: 'Невідомий', url: current_url };
 
         var html = $('<div class="server-manager"></div>');
 
-        // 1) Поточний сервер (Жовтий, не клікабельний)
+        // 1) Поточний сервер
         html.append('<div style="color: #fff; font-size: 1.2em; margin-bottom: 5px;">Поточний сервер:</div>');
-        html.append('<div style="color: #ffc107; font-size: 1.6em; margin-bottom: 25px; font-weight: bold; pointer-events: none;">' + current_server.title + '</div>');
+        html.append('<div class="current-server-name" style="color: #ffc107; font-size: 1.6em; margin-bottom: 25px; font-weight: bold; pointer-events: none;">' + current_server.title + '</div>');
 
         // 2) Список серверів
         html.append('<div style="color: #fff; font-size: 1.2em; margin-bottom: 10px;">Список серверів:</div>');
@@ -24,7 +31,7 @@
             if (serv.url !== current_url) {
                 var item = $('<div class="navigation-item selector" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-radius: 8px; margin-bottom: 10px; background: rgba(255,255,255,0.1)">' +
                     '<span style="font-size: 1.2em; font-weight: 500;">' + serv.title + '</span>' +
-                    '<span class="server-status" style="font-size: 0.9em; font-weight: bold;">перевірка...</span>' +
+                    '<span class="server-status" style="font-size: 0.9em; font-weight: bold; color: #666;">перевірка...</span>' +
                 '</div>');
 
                 item.on('hover:enter', function () {
@@ -33,13 +40,12 @@
                     $(this).css('background', 'rgba(255,255,255,0.3)');
                 });
 
-                // Перевірка доступності
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET', serv.url, true);
-                xhr.timeout = 5000;
+                xhr.timeout = 4000;
                 xhr.onreadystatechange = function() {
                     if (xhr.readyState == 4) {
-                        if (xhr.status > 0 || xhr.status === 0 && xhr.readyState === 4) { // Fix для no-cors
+                        if (xhr.status > 0 || xhr.status === 0) {
                             item.find('.server-status').text('ONLINE').css('color', '#4caf50');
                         } else {
                             item.find('.server-status').text('OFFLINE').css('color', '#f44336');
@@ -56,22 +62,20 @@
         var btn_change = $('<div class="simple-button selector" style="background: #fff; color: #000; text-align: center; border-radius: 10px; font-weight: bold; padding: 15px;">Змінити сервер</div>');
         btn_change.on('hover:enter', function () {
             if (selected_url) {
-                // Запис у всі можливі ключі для запобігання відкату на Android
                 Lampa.Storage.set('online_proxy_url', selected_url);
                 Lampa.Storage.set('proxy_url', selected_url);
                 Lampa.Storage.set('proxy_address', selected_url);
-                Lampa.Storage.set('parser_use', 'true'); // Додатковий тригер
-
-                Lampa.Noty.show('Зміна сервера... Зачекайте');
-                setTimeout(() => { location.reload(); }, 500);
+                
+                Lampa.Noty.show('Сервер змінено. Перезавантаження...');
+                setTimeout(function(){ location.reload(); }, 500);
             } else {
-                Lampa.Noty.show('Спочатку виберіть сервер зі списку');
+                Lampa.Noty.show('Виберіть сервер зі списку');
             }
         });
         html.append(btn_change);
 
         Lampa.Modal.open({
-            title: 'Менеджер підключень',
+            title: 'Керування серверами',
             html: html,
             size: 'medium',
             onBack: function () {
@@ -81,41 +85,46 @@
         });
     }
 
-    // 4) Логіка відображення в 3 місцях (через Observer)
     function inject() {
-        // Шапка
+        // 1. Шапка (Head)
         if ($('.head__actions').length && !$('.head__server-btn').length) {
             var btn = $('<div class="head__action render--visible selector head__server-btn"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg></div>');
             btn.on('hover:enter', showManager);
             $('.head__actions').prepend(btn);
         }
 
-        // Бічне меню
+        // 2. Бічне меню (Menu)
         if ($('.menu__list').length && !$('.menu__item[data-action="server_change"]').length) {
             var m_item = $('<li class="menu__item selector" data-action="server_change"><div class="menu__ico"><svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M15 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1z"></svg></div><div class="menu__text">Зміна сервера</div></li>');
             m_item.on('hover:enter', function() {
-                Lampa.Menu.hide();
+                // Використовуємо нативне закриття меню перед відкриттям модалки
+                $('.menu').removeClass('menu--open');
                 showManager();
             });
             $('.menu__list').append(m_item);
         }
 
-        // Налаштування
+        // 3. Налаштування (Settings) - Самий надійний метод
         if ($('.settings-list').length && !$('.settings-server-btn').length) {
-            var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle"><div class="settings-param__name">Зміна сервера</div><div class="settings-param__value">Налаштувати адресу</div></div>');
+            var s_item = $('<div class="settings-param selector settings-server-btn" data-type="toggle"><div class="settings-param__name">Менеджер серверів</div><div class="settings-param__value">Змінити поточний</div></div>');
             s_item.on('hover:enter', showManager);
+            // Вставляємо в кінець списку
             $('.settings-list').append(s_item);
         }
     }
 
-    // Запуск спостерігача
+    // Слухаємо відкриття налаштувань через системний лістенер
+    Lampa.Settings.listener.follow('open', function (e) {
+        // Чекаємо поки DOM налаштувань побудується
+        setTimeout(inject, 100);
+    });
+
+    // Спостерігач за DOM для Шапки та Меню
     var observer = new MutationObserver(function() {
         inject();
     });
-
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Початковий запуск
     if (window.appready) inject();
     else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') inject(); });
 })();
