@@ -10,37 +10,36 @@
 
     function ServerSwitcher() {
         var _this = this;
-        var modal;
 
         this.cleanUrl = function(url) {
             if(!url) return '';
             return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
         };
 
-        // Визначаємо сервер на якому РЕАЛЬНО зараз запущено додаток
-        this.getRealCurrent = function() {
-            return window.location.host.toLowerCase();
+        this.getCurrent = function () {
+            var current = Lampa.Storage.get('source') || 'lampa.mx';
+            return _this.cleanUrl(current);
         };
 
         this.checkStatus = function (url, callback) {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', url, true);
-            xhr.timeout = 4000;
-            xhr.onload = function() { callback(true); };
-            xhr.onerror = function() { callback(false); };
-            xhr.ontimeout = function() { callback(false); };
-            try { xhr.send(); } catch (e) { callback(false); }
+            var img = new Image();
+            var timer = setTimeout(function() {
+                img.src = '';
+                callback(false);
+            }, 3000);
+            img.onload = function() { clearTimeout(timer); callback(true); };
+            img.onerror = function() { clearTimeout(timer); callback(true); };
+            img.src = url + '/favicon.ico?t=' + new Date().getTime();
         };
 
         this.build = function () {
-            var currentHost = this.getRealCurrent();
+            var currentClean = this.getCurrent();
             var html = $('<div class="server-switcher-modal"></div>');
             
-            // Знаходимо назву поточного хоста
             var currentObj = servers.find(function(s) { 
-                return _this.cleanUrl(s.url).indexOf(currentHost) > -1; 
+                return _this.cleanUrl(s.url) === currentClean; 
             });
-            var currentName = currentObj ? currentObj.name : currentHost;
+            var currentName = currentObj ? currentObj.name : currentClean;
 
             html.append('<div class="server-switcher-label">Поточний сервер:</div>');
             html.append('<div class="server-switcher-current">' + currentName + '</div>');
@@ -50,8 +49,8 @@
             var list = $('<div class="server-switcher-list"></div>');
             
             servers.forEach(function (server) {
-                var serverHost = _this.cleanUrl(server.url);
-                if (currentHost.indexOf(serverHost) > -1) return;
+                var serverClean = _this.cleanUrl(server.url);
+                if (serverClean === currentClean) return;
 
                 var item = $('<div class="server-switcher-item selector" data-url="' + server.url + '"></div>');
                 var info = $('<div class="server-info"><span class="server-dot"></span><span class="server-name">' + server.name + '</span></div>');
@@ -80,30 +79,21 @@
             });
 
             html.append(list);
-            var btn = $('<div class="button selector" style="text-align:center; margin-top: 15px; width: 100%;">Змінити сервер</div>');
+            var btn = $('<div class="button selector" style="text-align:center; margin-top: 20px; width: 100%;">Змінити сервер</div>');
+            
             btn.on('hover:enter click', function () {
                 var selected = $('.server-switcher-item.active', html);
-                if (selected.length) _this.applyServer(selected.data('url'));
-                else Lampa.Noty.show('Оберіть доступний сервер');
+                if (selected.length) {
+                    Lampa.Storage.set('source', selected.data('url'));
+                    Lampa.Noty.show('Сервер змінено. Перезавантаження...');
+                    setTimeout(function () { window.location.reload(); }, 500);
+                } else {
+                    Lampa.Noty.show('Оберіть доступний сервер');
+                }
             });
 
             html.append(btn);
             return html;
-        };
-
-        this.applyServer = function (newUrl) {
-            Lampa.Storage.set('source', newUrl);
-            Lampa.Storage.set('proxy_tmdb', false); // Вимикаємо проксі, щоб не заважало новому серверу
-            Lampa.Storage.set('language', 'uk');
-            Lampa.Storage.save(); 
-            
-            Lampa.Modal.close();
-            Lampa.Noty.show('Перехід на: ' + newUrl);
-
-            setTimeout(function () {
-                // Пряма зміна локації для 100% результату
-                window.location.href = newUrl;
-            }, 800);
         };
 
         this.open = function () {
@@ -123,36 +113,39 @@
     var css = `
         .server-switcher-modal { padding: 15px; }
         .server-switcher-label { color: #aaa; font-size: 0.8em; margin-bottom: 5px; text-transform: uppercase; }
-        .server-switcher-current { color: #ffd948; font-size: 1.4em; font-weight: bold; margin-bottom: 15px; }
-        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0; }
-        .server-switcher-list { max-height: 50vh; overflow-y: auto; }
+        .server-switcher-current { color: #ffd948; font-size: 1.4em; font-weight: bold; margin-bottom: 12px; }
+        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
+        .server-switcher-list { max-height: 45vh; overflow-y: auto; }
         .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 6px; margin-bottom: 5px; background: rgba(255,255,255,0.05); }
-        .server-switcher-item.active { background: rgba(255,255,255,0.2) !important; border: 1px solid rgba(255,255,255,0.3); }
-        .server-switcher-item.disabled { opacity: 0.5; cursor: default; }
+        .server-switcher-item.active { background: rgba(255,255,255,0.15) !important; }
+        .server-switcher-item.disabled { opacity: 0.4; }
         .server-info { display: flex; align-items: center; }
         .server-name { font-weight: bold; margin-left: 10px; color: #fff; }
         .server-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
         .dot-online { background: #4b6; }
         .dot-offline { background: #f44; }
-        .status-online { color: #4b6; font-size: 0.85em; }
-        .status-offline { color: #f44; font-size: 0.85em; }
+        .status-online { color: #4b6; font-size: 0.8em; }
+        .status-offline { color: #f44; font-size: 0.8em; }
     `;
     
-    if (!$('style#server-switcher-style').length) {
-        $('<style id="server-switcher-style">').text(css).appendTo('head');
-    }
-
+    $('<style>').text(css).appendTo('head');
     var Switcher = new ServerSwitcher();
 
-    // Ініціалізація налаштувань (Виправлено: без підменю)
+    // Налаштування (за вашим прикладом)
     function initSettings() {
         var Settings = Lampa.SettingsApi || Lampa.Settings;
-        if (!Settings) return;
+        if (!Settings || !Settings.addComponent) return;
+
+        Settings.addComponent({
+            component: 'srv_switch_plugin',
+            name: 'Зміна серверу',
+            icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>'
+        });
 
         Settings.addParam({
-            component: 'interface', // Додаємо прямо в розділ "Інтерфейс" або створюємо свій
-            param: { name: 'server_switch_trigger', type: 'click' },
-            field: { name: 'Зміна серверу Lampa', description: 'Відкрити вікно вибору сервера' },
+            component: 'srv_switch_plugin',
+            param: { name: 'open_trigger', type: 'button' },
+            field: { name: 'Вибрати інший сервер' },
             onChange: function () { Switcher.open(); }
         });
     }
@@ -170,15 +163,13 @@
     function initHeader() {
         Lampa.Listener.follow('app', function(e) {
             if(e.type == 'ready') {
-                if ($('.head__action.srv-trigger').length) return;
-                var btn = $('<div class="head__action selector srv-trigger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1.5em; vertical-align:middle"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect></svg></div>');
+                var btn = $('<div class="head__action selector"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1.4em"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg></div>');
                 btn.on('hover:enter click', function () { Switcher.open(); });
                 $('.head__actions').prepend(btn);
             }
         });
     }
 
-    // Запуск
     if (window.Lampa) {
         initSettings();
         initHeader();
