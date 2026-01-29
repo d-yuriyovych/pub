@@ -1,6 +1,7 @@
 (function () {
     'use strict';
 
+    // Список серверів
     var servers = [
         { name: 'Lampa (MX)', url: 'http://lampa.mx' },
         { name: 'Lampa (Koyeb)', url: 'https://central-roze-d-yuriyovych-74a9dc5c.koyeb.app' },
@@ -11,23 +12,30 @@
     function ServerSwitcher() {
         var _this = this;
 
+        // Очищення URL для порівняння (прибираємо http/https та слеші)
         this.cleanUrl = function(url) {
             if(!url) return '';
             return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
         };
 
+        // Отримання РЕАЛЬНОГО поточного сервера з адресного рядка браузера
         this.getCurrent = function () {
-            var current = Lampa.Storage.get('source') || 'lampa.mx';
-            return _this.cleanUrl(current);
+            // Використовуємо origin (домен), на якому ми зараз знаходимось
+            var currentOrigin = window.location.origin; 
+            return _this.cleanUrl(currentOrigin);
         };
 
-        // Покращена перевірка доступності
+        // Перевірка доступності
         this.checkStatus = function (url, callback) {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', url, true);
             xhr.timeout = 5000;
             
-            xhr.onload = function() { callback(true); };
+            xhr.onload = function() { 
+                // Вважаємо успіхом коди 200-399
+                if (xhr.status >= 200 && xhr.status < 400) callback(true);
+                else callback(false);
+            };
             xhr.onerror = function() { callback(false); };
             xhr.ontimeout = function() { callback(false); };
             
@@ -42,28 +50,38 @@
             var currentClean = this.getCurrent();
             var html = $('<div class="server-switcher-modal"></div>');
             
+            // Кнопка закриття (хрестик) для зручності
+            var closeBtn = $('<div class="server-switcher-close selector"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>');
+            closeBtn.on('hover:enter click', function() {
+                Lampa.Modal.close();
+            });
+            html.append(closeBtn);
+
             var currentObj = servers.find(function(s) { 
                 return _this.cleanUrl(s.url) === currentClean; 
             });
-            var currentDisplayName = currentObj ? currentObj.name : currentClean;
+            var currentDisplayName = currentObj ? currentObj.name : (window.location.hostname || 'Невідомий');
 
-            html.append('<div class="server-switcher-label">Поточний сервер:</div>');
+            html.append('<div class="server-switcher-label">Ви зараз тут:</div>');
             html.append('<div class="server-switcher-current">' + currentDisplayName + '</div>');
             html.append('<div class="server-switcher-divider"></div>');
-            html.append('<div class="server-switcher-label">Список серверів:</div>');
+            html.append('<div class="server-switcher-label">Оберіть сервер для переходу:</div>');
 
             var list = $('<div class="server-switcher-list"></div>');
             
             servers.forEach(function (server) {
                 var serverClean = _this.cleanUrl(server.url);
-                if (serverClean === currentClean) return;
+                var isCurrent = serverClean === currentClean;
 
                 var item = $('<div class="server-switcher-item selector" data-url="' + server.url + '"></div>');
+                if(isCurrent) item.addClass('active-server');
+
                 var info = $('<div class="server-info"><span class="server-dot"></span><span class="server-name">' + server.name + '</span></div>');
                 var statusText = $('<span class="server-status">Перевірка...</span>');
 
                 item.append(info).append(statusText);
                 
+                // Клік по елементу списку
                 item.on('hover:enter click', function () {
                     if ($(this).hasClass('disabled')) return;
                     $('.server-switcher-item', html).removeClass('active');
@@ -72,14 +90,19 @@
 
                 list.append(item);
 
+                // Перевірка статусу
                 _this.checkStatus(server.url, function(isOnline) {
                     var dot = item.find('.server-dot');
+                    var name = item.find('.server-name');
+                    
                     if(isOnline) {
-                        statusText.text('Доступний').addClass('status-online');
+                        statusText.text('OK').addClass('status-online');
                         dot.addClass('dot-online');
+                        name.addClass('name-online'); // Колір тексту для доступного
                     } else {
-                        statusText.text('Недоступний').addClass('status-offline');
+                        statusText.text('Error').addClass('status-offline');
                         dot.addClass('dot-offline');
+                        name.addClass('name-offline'); // Колір тексту для недоступного
                         item.addClass('disabled').removeClass('selector');
                     }
                 });
@@ -87,11 +110,15 @@
 
             html.append(list);
 
-            var btn = $('<div class="button selector" style="text-align:center; margin-top: 10px; width: 100%;">Змінити сервер</div>');
+            // Красива кнопка
+            var btn = $('<div class="server-switcher-btn selector">Змінити сервер</div>');
             btn.on('hover:enter click', function () {
                 var selected = $('.server-switcher-item.active', html);
-                if (selected.length) _this.applyServer(selected.data('url'));
-                else Lampa.Noty.show('Оберіть доступний сервер');
+                if (selected.length) {
+                    _this.applyServer(selected.data('url'));
+                } else {
+                    Lampa.Noty.show('Спочатку оберіть сервер зі списку');
+                }
             });
 
             html.append(btn);
@@ -99,60 +126,100 @@
         };
 
         this.applyServer = function (newUrl) {
+            if (!newUrl) return;
+
+            // Якщо вибрали той самий сервер, де ми є
+            if (_this.cleanUrl(newUrl) === _this.getCurrent()) {
+                Lampa.Noty.show('Ви вже на цьому сервері');
+                return;
+            }
+
             try {
                 Lampa.Storage.set('source', newUrl);
+                // Зберігаємо мову, якщо немає
                 if(!Lampa.Storage.get('language')) Lampa.Storage.set('language', 'uk');
                 Lampa.Storage.save(); 
                 
                 Lampa.Modal.close();
-                Lampa.Noty.show('Перезавантаження...');
+                Lampa.Noty.show('Перехід на новий сервер...');
 
+                // ВИПРАВЛЕННЯ: Використовуємо location.href для реального переходу на інший домен
                 setTimeout(function () {
-                    if (Lampa.Utils && Lampa.Utils.reload) Lampa.Utils.reload();
-                    else window.location.reload();
-                }, 500);
+                    window.location.href = newUrl;
+                }, 1000);
             } catch (e) {
                 console.log('Switcher Error:', e);
-                window.location.reload();
+                window.location.href = newUrl;
             }
         };
 
         this.open = function () {
             Lampa.Modal.open({
-                title: 'Зміна серверу',
+                title: '', // Заголовок всередині HTML для кращого дизайну
                 html: _this.build(),
                 size: 'medium',
                 mask: true,
                 onBack: function () {
                     Lampa.Modal.close();
+                    // ВИПРАВЛЕННЯ: Повертаємо керування контенту
                     Lampa.Controller.toggle('content');
                 }
             });
         };
     }
 
+    // Стилі
     var css = `
-        .server-switcher-modal { padding: 10px; }
-        .server-switcher-label { color: #aaa; font-size: 0.8em; margin-bottom: 5px; text-transform: uppercase; }
-        .server-switcher-current { color: #ffd948; font-size: 1.3em; font-weight: bold; margin-bottom: 12px; }
-        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
-        .server-switcher-list { max-height: 40vh; overflow-y: auto; }
-        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-radius: 6px; margin-bottom: 4px; background: rgba(255,255,255,0.05); }
+        .server-switcher-modal { padding: 15px; position: relative; }
+        .server-switcher-close { position: absolute; top: -15px; right: -15px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; opacity: 0.7; }
+        .server-switcher-close:hover { opacity: 1; }
+        .server-switcher-close svg { width: 24px; height: 24px; }
         
-        /* Виділення вибраного: Світло-сірий */
-        .server-switcher-item.active { background: rgba(255,255,255,0.15); }
-        .server-switcher-item.disabled { opacity: 0.5; }
+        .server-switcher-label { color: #aaa; font-size: 0.9em; margin-bottom: 8px; }
+        .server-switcher-current { color: #fff; font-size: 1.4em; font-weight: bold; margin-bottom: 15px; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0; }
+        
+        .server-switcher-list { max-height: 50vh; overflow-y: auto; margin-bottom: 20px; }
+        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-radius: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.05); transition: background 0.2s; border: 1px solid transparent; }
+        
+        .server-switcher-item.active { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); transform: scale(1.02); }
+        .server-switcher-item.disabled { opacity: 0.4; pointer-events: none; grayscale: 1; }
+        .server-switcher-item.active-server { background: rgba(75, 180, 100, 0.1); border: 1px solid rgba(75, 180, 100, 0.3); }
 
         .server-info { display: flex; align-items: center; }
-        .server-name { font-weight: bold; margin-left: 8px; color: #fff; }
-        .server-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+        .server-name { font-weight: 500; margin-left: 12px; font-size: 1.1em; color: #ccc; transition: color 0.3s; }
+        .name-online { color: #fff; } /* Доступність: Білий/Яскравий для онлайн */
+        .name-offline { color: #f66; } /* Доступність: Червоний для офлайн */
+
+        .server-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
         
-        /* Статуси */
-        .dot-online { background: #4b6; }
-        .status-online { color: #4b6; font-size: 0.8em; }
+        .dot-online { background: #4b6; box-shadow: 0 0 8px #4b6; }
+        .status-online { color: #4b6; font-size: 0.85em; font-weight: bold; }
         
-        .dot-offline { background: #f44; }
-        .status-offline { color: #f44; font-size: 0.8em; }
+        .dot-offline { background: #f44; box-shadow: 0 0 8px #f44; }
+        .status-offline { color: #f44; font-size: 0.85em; }
+
+        /* Красива кнопка */
+        .server-switcher-btn {
+            background: linear-gradient(135deg, #fbb03b 0%, #ffc107 100%);
+            color: #000;
+            text-align: center;
+            padding: 14px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255, 193, 7, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .server-switcher-btn:hover, .server-switcher-btn.focus {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 193, 7, 0.5);
+            background: linear-gradient(135deg, #ffc107 0%, #ffca28 100%);
+        }
     `;
     
     var style = document.createElement('style');
@@ -161,21 +228,34 @@
 
     var Switcher = new ServerSwitcher();
 
+    // ВИПРАВЛЕННЯ: Додавання кнопки прямо в список головних налаштувань
     function initSettings() {
-        var Settings = Lampa.SettingsApi || Lampa.Settings;
-        if (!Settings || !Settings.addComponent) return;
+        // Слухаємо відкриття будь-якого вікна
+        Lampa.Settings.listener.follow('open', function (e) {
+            // Якщо відкрито саме головне меню налаштувань ('main')
+            if (e.name == 'main') {
+                // Створюємо елемент
+                var item = $(`
+                    <div class="settings-param selector" data-type="button">
+                        <div class="settings-param__name">Зміна серверу</div>
+                        <div class="settings-param__descr">Переключити джерело Lampa</div>
+                        <div class="settings-param__status">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1.2em; height: 1.2em;">
+                                <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6" y2="6"/><line x1="6" y1="18" x2="6" y2="18"/>
+                            </svg>
+                        </div>
+                    </div>
+                `);
 
-        Settings.addComponent({
-            component: 'srv_switch',
-            name: 'Зміна серверу',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.67-1.5-1.5s.68-1.5 1.5-1.5 1.5.67 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5c-.82 0-1.5-.67-1.5-1.5S6.18 5.5 7 5.5s1.5.67 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>'
-        });
+                // Обробка кліку - одразу відкриваємо модалку
+                item.on('hover:enter click', function () {
+                    Switcher.open();
+                });
 
-        Settings.addParam({
-            component: 'srv_switch',
-            param: { name: 'open_btn', type: 'button' },
-            field: { name: 'Вибрати сервер' },
-            onChange: function () { Switcher.open(); }
+                // Додаємо його в початок або кінець списку налаштувань
+                // Тут додаємо після розділу "Інтерфейс" або просто в загальний список
+                $('.settings__list').eq(0).append(item);
+            }
         });
     }
 
