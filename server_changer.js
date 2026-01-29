@@ -3,10 +3,10 @@
 
     // --- КОНФІГУРАЦІЯ СЕРВЕРІВ (ВІДРЕДАГУЙТЕ ЦЕЙ СПИСОК) ---
     var servers = [
-        { name: 'Cub (Офіційний)', url: 'http://cub.red' },
-        { name: 'Lampa (Резерв)', url: 'http://lampa.mx' },
-        { name: 'Vmod (Альтернатива)', url: 'http://vmod.pro' },
-        { name: 'Localhost (Тест)', url: 'http://192.168.1.100:8080' } // Приклад
+        { name: 'Lampa (MX)', url: 'http://lampa.mx' },
+        { name: 'Lampa (Koyeb)', url: 'https://central-roze-d-yuriyovych.74a9dc5c.koyeb.app' },
+        { name: 'Lampa (NNMTV)', url: 'nnmtv.pw' },
+        { name: 'Lampa (VIP)', url: 'lampa.vip' },
     ];
     // -------------------------------------------------------
 
