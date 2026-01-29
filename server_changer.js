@@ -10,60 +10,54 @@
 
     function ServerSwitcher() {
         var _this = this;
+        var modal;
 
         this.cleanUrl = function(url) {
             if(!url) return '';
             return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
         };
 
-        this.getCurrent = function () {
-            var current = Lampa.Storage.get('source') || 'lampa.mx';
-            return _this.cleanUrl(current);
+        // Визначаємо сервер на якому РЕАЛЬНО зараз запущено додаток
+        this.getRealCurrent = function() {
+            return window.location.host.toLowerCase();
         };
 
-        // Покращена перевірка доступності
         this.checkStatus = function (url, callback) {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', url, true);
-            xhr.timeout = 5000;
-            
+            xhr.timeout = 4000;
             xhr.onload = function() { callback(true); };
             xhr.onerror = function() { callback(false); };
             xhr.ontimeout = function() { callback(false); };
-            
-            try {
-                xhr.send();
-            } catch (e) {
-                callback(false);
-            }
+            try { xhr.send(); } catch (e) { callback(false); }
         };
 
         this.build = function () {
-            var currentClean = this.getCurrent();
+            var currentHost = this.getRealCurrent();
             var html = $('<div class="server-switcher-modal"></div>');
             
+            // Знаходимо назву поточного хоста
             var currentObj = servers.find(function(s) { 
-                return _this.cleanUrl(s.url) === currentClean; 
+                return _this.cleanUrl(s.url).indexOf(currentHost) > -1; 
             });
-            var currentDisplayName = currentObj ? currentObj.name : currentClean;
+            var currentName = currentObj ? currentObj.name : currentHost;
 
             html.append('<div class="server-switcher-label">Поточний сервер:</div>');
-            html.append('<div class="server-switcher-current">' + currentDisplayName + '</div>');
+            html.append('<div class="server-switcher-current">' + currentName + '</div>');
             html.append('<div class="server-switcher-divider"></div>');
             html.append('<div class="server-switcher-label">Список серверів:</div>');
 
             var list = $('<div class="server-switcher-list"></div>');
             
             servers.forEach(function (server) {
-                var serverClean = _this.cleanUrl(server.url);
-                if (serverClean === currentClean) return;
+                var serverHost = _this.cleanUrl(server.url);
+                if (currentHost.indexOf(serverHost) > -1) return;
 
                 var item = $('<div class="server-switcher-item selector" data-url="' + server.url + '"></div>');
                 var info = $('<div class="server-info"><span class="server-dot"></span><span class="server-name">' + server.name + '</span></div>');
                 var statusText = $('<span class="server-status">Перевірка...</span>');
 
                 item.append(info).append(statusText);
-                
                 item.on('hover:enter click', function () {
                     if ($(this).hasClass('disabled')) return;
                     $('.server-switcher-item', html).removeClass('active');
@@ -86,8 +80,7 @@
             });
 
             html.append(list);
-
-            var btn = $('<div class="button selector" style="text-align:center; margin-top: 10px; width: 100%;">Змінити сервер</div>');
+            var btn = $('<div class="button selector" style="text-align:center; margin-top: 15px; width: 100%;">Змінити сервер</div>');
             btn.on('hover:enter click', function () {
                 var selected = $('.server-switcher-item.active', html);
                 if (selected.length) _this.applyServer(selected.data('url'));
@@ -99,22 +92,18 @@
         };
 
         this.applyServer = function (newUrl) {
-            try {
-                Lampa.Storage.set('source', newUrl);
-                if(!Lampa.Storage.get('language')) Lampa.Storage.set('language', 'uk');
-                Lampa.Storage.save(); 
-                
-                Lampa.Modal.close();
-                Lampa.Noty.show('Перезавантаження...');
+            Lampa.Storage.set('source', newUrl);
+            Lampa.Storage.set('proxy_tmdb', false); // Вимикаємо проксі, щоб не заважало новому серверу
+            Lampa.Storage.set('language', 'uk');
+            Lampa.Storage.save(); 
+            
+            Lampa.Modal.close();
+            Lampa.Noty.show('Перехід на: ' + newUrl);
 
-                setTimeout(function () {
-                    if (Lampa.Utils && Lampa.Utils.reload) Lampa.Utils.reload();
-                    else window.location.reload();
-                }, 500);
-            } catch (e) {
-                console.log('Switcher Error:', e);
-                window.location.reload();
-            }
+            setTimeout(function () {
+                // Пряма зміна локації для 100% результату
+                window.location.href = newUrl;
+            }, 800);
         };
 
         this.open = function () {
@@ -132,49 +121,38 @@
     }
 
     var css = `
-        .server-switcher-modal { padding: 10px; }
+        .server-switcher-modal { padding: 15px; }
         .server-switcher-label { color: #aaa; font-size: 0.8em; margin-bottom: 5px; text-transform: uppercase; }
-        .server-switcher-current { color: #ffd948; font-size: 1.3em; font-weight: bold; margin-bottom: 12px; }
-        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
-        .server-switcher-list { max-height: 40vh; overflow-y: auto; }
-        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-radius: 6px; margin-bottom: 4px; background: rgba(255,255,255,0.05); }
-        
-        /* Виділення вибраного: Світло-сірий */
-        .server-switcher-item.active { background: rgba(255,255,255,0.15); }
-        .server-switcher-item.disabled { opacity: 0.5; }
-
+        .server-switcher-current { color: #ffd948; font-size: 1.4em; font-weight: bold; margin-bottom: 15px; }
+        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0; }
+        .server-switcher-list { max-height: 50vh; overflow-y: auto; }
+        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 6px; margin-bottom: 5px; background: rgba(255,255,255,0.05); }
+        .server-switcher-item.active { background: rgba(255,255,255,0.2) !important; border: 1px solid rgba(255,255,255,0.3); }
+        .server-switcher-item.disabled { opacity: 0.5; cursor: default; }
         .server-info { display: flex; align-items: center; }
-        .server-name { font-weight: bold; margin-left: 8px; color: #fff; }
-        .server-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-        
-        /* Статуси */
+        .server-name { font-weight: bold; margin-left: 10px; color: #fff; }
+        .server-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
         .dot-online { background: #4b6; }
-        .status-online { color: #4b6; font-size: 0.8em; }
-        
         .dot-offline { background: #f44; }
-        .status-offline { color: #f44; font-size: 0.8em; }
+        .status-online { color: #4b6; font-size: 0.85em; }
+        .status-offline { color: #f44; font-size: 0.85em; }
     `;
     
-    var style = document.createElement('style');
-    style.innerHTML = css;
-    document.head.appendChild(style);
+    if (!$('style#server-switcher-style').length) {
+        $('<style id="server-switcher-style">').text(css).appendTo('head');
+    }
 
     var Switcher = new ServerSwitcher();
 
+    // Ініціалізація налаштувань (Виправлено: без підменю)
     function initSettings() {
         var Settings = Lampa.SettingsApi || Lampa.Settings;
-        if (!Settings || !Settings.addComponent) return;
-
-        Settings.addComponent({
-            component: 'srv_switch',
-            name: 'Зміна серверу',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.67-1.5-1.5s.68-1.5 1.5-1.5 1.5.67 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5c-.82 0-1.5-.67-1.5-1.5S6.18 5.5 7 5.5s1.5.67 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>'
-        });
+        if (!Settings) return;
 
         Settings.addParam({
-            component: 'srv_switch',
-            param: { name: 'open_btn', type: 'button' },
-            field: { name: 'Вибрати сервер' },
+            component: 'interface', // Додаємо прямо в розділ "Інтерфейс" або створюємо свій
+            param: { name: 'server_switch_trigger', type: 'click' },
+            field: { name: 'Зміна серверу Lampa', description: 'Відкрити вікно вибору сервера' },
             onChange: function () { Switcher.open(); }
         });
     }
@@ -182,7 +160,7 @@
     function initMenu() {
         Lampa.Listener.follow('app', function (e) {
             if (e.type == 'ready') {
-                var item = $('<li class="menu__item selector"><div class="menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6" y2="6"/><line x1="6" y1="18" x2="6" y2="18"/></svg></div><div class="menu__text">Зміна серверу</div></li>');
+                var item = $('<li class="menu__item selector"><div class="menu__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg></div><div class="menu__text">Зміна серверу</div></li>');
                 item.on('hover:enter click', function () { Switcher.open(); });
                 $('.menu .menu__list').append(item);
             }
@@ -192,13 +170,15 @@
     function initHeader() {
         Lampa.Listener.follow('app', function(e) {
             if(e.type == 'ready') {
-                var btn = $('<div class="head__action selector"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect></svg></div>');
+                if ($('.head__action.srv-trigger').length) return;
+                var btn = $('<div class="head__action selector srv-trigger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1.5em; vertical-align:middle"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect></svg></div>');
                 btn.on('hover:enter click', function () { Switcher.open(); });
                 $('.head__actions').prepend(btn);
             }
         });
     }
 
+    // Запуск
     if (window.Lampa) {
         initSettings();
         initHeader();
