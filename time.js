@@ -34,14 +34,14 @@
         var api = Lampa.SettingsApi || Lampa.Settings;
         if (!api) return;
 
-        // 1. Додаємо категорію
+        // 1. Реєструємо іконку в меню
         api.addComponent({
             component: 'clock_cfg',
             name: 'Годинник у плеєрі',
             icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
         });
 
-        // 2. Додаємо самі налаштування в цю категорію через офіційний add
+        // 2. Додаємо пункти через API
         api.add({
             title: 'Відображати секунди',
             component: 'clock_cfg',
@@ -63,6 +63,18 @@
                 'bottom_left': 'Знизу зліва'
             },
             default: 'top_right'
+        });
+
+        // 3. ФІКС ПОРОЖНЕЧІ: Перехоплюємо подію рендеру і змушуємо Лампу вивести список
+        Lampa.Listener.follow('settings', function (e) {
+            if (e.type == 'render' && e.name == 'clock_cfg') {
+                var body = e.body || $('.settings__content .settings__list');
+                // Викликаємо вбудований метод Лампи для малювання списку налаштувань за назвою компонента
+                if (Lampa.Settings.main) {
+                    body.html(Lampa.Settings.main().render('clock_cfg'));
+                    Lampa.Controller.enable('settings');
+                }
+            }
         });
 
         plugin.initClock();
