@@ -33,7 +33,7 @@
 
         this.openMenu = function() {
             Lampa.Select.show({
-                title: 'Годинник',
+                title: 'Налаштування годинника',
                 items: [
                     {
                         title: 'Секунди',
@@ -69,32 +69,39 @@
     var plugin = new ClockPlugin();
 
     function init() {
-        // 1. Повертаємо реєстрацію кнопки (вона працювала)
-        Lampa.Settings.addComponent({
-            component: 'clock_cfg',
-            name: 'Годинник у плеєрі',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
-        });
+        // Копіюємо логіку з твого прикладу
+        var Settings = Lampa.SettingsApi || Lampa.Settings;
+        if (Settings && Settings.addComponent) {
+            Settings.addComponent({
+                component: 'clock_cfg',
+                name: 'Годинник у плеєрі',
+                icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
+            });
 
-        // 2. ХАК ДЛЯ КЛІКУ: чекаємо рендер і перехоплюємо подію
-        Lampa.Listener.follow('settings', function (e) {
-            if (e.type == 'render') {
-                setTimeout(function() {
-                    // Шукаємо ту саму кнопку за атрибутом, який Лампа їй дає
-                    var btn = $('.settings__item[data-component="clock_cfg"]');
-                    if (btn.length) {
-                        btn.off('click hover:enter').on('click hover:enter', function(opt) {
-                            plugin.openMenu();
-                        });
-                    }
-                }, 100);
-            }
-        });
+            Lampa.Listener.follow('settings', function (e) {
+                if (e.type == 'render') {
+                    setTimeout(function() {
+                        // Знаходимо нашу кнопку точно за селектором
+                        var item = $('.settings__item[data-component="clock_cfg"]');
+                        if (item.length) {
+                            // Клонуємо, щоб скинути стандартні дії Лампи (як у твоєму прикладі)
+                            var newItem = item.clone();
+                            item.replaceWith(newItem);
+                            
+                            newItem.on('hover:enter click', function () { 
+                                plugin.openMenu(); 
+                            });
+                        }
+                    }, 300);
+                }
+            });
+        }
 
         plugin.initClock();
         setInterval(plugin.update, 1000);
     }
 
+    // Чекаємо повної готовності Lampa
     if (window.appready) init();
-    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') init(); });
+    else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') init(); });
 })();
