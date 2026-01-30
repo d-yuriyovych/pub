@@ -33,7 +33,7 @@
 
         this.openMenu = function() {
             Lampa.Select.show({
-                title: 'Налаштування годинника',
+                title: 'Годинник',
                 items: [
                     {
                         title: 'Секунди',
@@ -68,39 +68,31 @@
 
     var plugin = new ClockPlugin();
 
-    function injectButton() {
-        // Шукаємо контейнер налаштувань
-        var settings_list = $('.settings__content .settings__list, .settings-list');
-        
-        if (settings_list.length && !$('.data-clock-btn').length) {
-            var btn = $(`
-                <div class="settings__item selector data-clock-btn">
-                    <div class="settings__item-ico">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    </div>
-                    <div class="settings__item-name">Годинник у плеєрі</div>
-                </div>
-            `);
-
-            btn.on('hover:enter click', function (e) {
-                e.preventDefault();
-                plugin.openMenu();
-            });
-
-            // Додаємо в кінець списку
-            settings_list.append(btn);
-            
-            // Оновлюємо контролер, щоб кнопка стала активною для пульту
-            if(window.Lampa.Controller) Lampa.Controller.enable('settings');
-        }
-    }
-
     function init() {
+        // 1. Повертаємо реєстрацію кнопки (вона працювала)
+        Lampa.Settings.addComponent({
+            component: 'clock_cfg',
+            name: 'Годинник у плеєрі',
+            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
+        });
+
+        // 2. ХАК ДЛЯ КЛІКУ: чекаємо рендер і перехоплюємо подію
+        Lampa.Listener.follow('settings', function (e) {
+            if (e.type == 'render') {
+                setTimeout(function() {
+                    // Шукаємо ту саму кнопку за атрибутом, який Лампа їй дає
+                    var btn = $('.settings__item[data-component="clock_cfg"]');
+                    if (btn.length) {
+                        btn.off('click hover:enter').on('click hover:enter', function(opt) {
+                            plugin.openMenu();
+                        });
+                    }
+                }, 100);
+            }
+        });
+
         plugin.initClock();
         setInterval(plugin.update, 1000);
-
-        // Постійно перевіряємо, чи відкриті налаштування, щоб вставити кнопку
-        setInterval(injectButton, 500);
     }
 
     if (window.appready) init();
