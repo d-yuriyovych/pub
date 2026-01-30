@@ -31,45 +31,44 @@
             else $('#lampa-custom-clock').hide();
         };
 
-        this.openMenu = function() {
-            Lampa.Select.show({
-                title: 'Налаштування годинника',
-                items: [
-                    {
-                        title: 'Секунди',
-                        subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні',
-                        type: 'seconds'
-                    },
-                    {
-                        title: 'Позиція',
-                        subtitle: Lampa.Storage.get('clock_position', 'top_right'),
-                        type: 'position'
-                    }
-                ],
-                onSelect: function(item) {
-                    if (item.type === 'seconds') {
+        // Функція для побудови пунктів всередині порожньої панелі
+        this.renderItems = function(container) {
+            container.empty();
+            var items = [
+                { title: 'Секунди', name: 'clock_seconds', value: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні' },
+                { title: 'Позиція', name: 'clock_position', value: Lampa.Storage.get('clock_position', 'top_right') }
+            ];
+
+            items.forEach(function(item) {
+                var row = $(`
+                    <div class="settings__item selector">
+                        <div class="settings__item-name">${item.title}</div>
+                        <div class="settings__item-value" style="color: #ffd948;">${item.value}</div>
+                    </div>
+                `);
+
+                row.on('hover:enter click', function() {
+                    if (item.name === 'clock_seconds') {
                         var cur = Lampa.Storage.get('clock_seconds', 'true');
                         Lampa.Storage.set('clock_seconds', cur === 'true' ? 'false' : 'true');
                     } else {
                         var p = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
                         var curP = Lampa.Storage.get('clock_position', 'top_right');
-                        var next = p[(p.indexOf(curP) + 1) % p.length];
-                        Lampa.Storage.set('clock_position', next);
+                        Lampa.Storage.set('clock_position', p[(p.indexOf(curP) + 1) % p.length]);
                     }
-                    Lampa.Noty.show('Збережено');
-                    _this.openMenu(); 
-                },
-                onBack: function() {
-                    Lampa.Controller.toggle('settings');
-                }
+                    Lampa.Noty.show('Оновлено');
+                    _this.renderItems(container); // Перемальовуємо вміст панелі
+                });
+                container.append(row);
             });
+            
+            Lampa.Controller.enable('settings'); // Повертаємо керування пультом
         };
     }
 
     var plugin = new ClockPlugin();
 
     function init() {
-        // Копіюємо логіку з твого прикладу
         var Settings = Lampa.SettingsApi || Lampa.Settings;
         if (Settings && Settings.addComponent) {
             Settings.addComponent({
@@ -78,21 +77,20 @@
                 icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
             });
 
+            // Слухаємо рендер. Коли відкривається наша "порожня" панель, ми її наповнюємо.
             Lampa.Listener.follow('settings', function (e) {
                 if (e.type == 'render') {
+                    // Якщо це рендер самого списку налаштувань — нічого не робимо, даємо кнопці бути.
+                }
+                
+                // Коли Лампа відкрила нашу порожню панель компонента (те, що ти бачиш на скріні)
+                if (e.name == 'clock_cfg' && e.type == 'render') {
                     setTimeout(function() {
-                        // Знаходимо нашу кнопку точно за селектором
-                        var item = $('.settings__item[data-component="clock_cfg"]');
-                        if (item.length) {
-                            // Клонуємо, щоб скинути стандартні дії Лампи (як у твоєму прикладі)
-                            var newItem = item.clone();
-                            item.replaceWith(newItem);
-                            
-                            newItem.on('hover:enter click', function () { 
-                                plugin.openMenu(); 
-                            });
+                        var panel = $('.settings__content .settings__list');
+                        if (panel.length) {
+                            plugin.renderItems(panel);
                         }
-                    }, 300);
+                    }, 10);
                 }
             });
         }
@@ -101,7 +99,6 @@
         setInterval(plugin.update, 1000);
     }
 
-    // Чекаємо повної готовності Lampa
     if (window.appready) init();
     else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') init(); });
 })();
