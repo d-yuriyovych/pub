@@ -4,13 +4,11 @@
     function ClockPlugin() {
         var _this = this;
 
-        // 1. Створення елемента годинника (білий текст, без фону)
         this.initClock = function() {
             if ($('#lampa-custom-clock').length) return;
             $('body').append('<div id="lampa-custom-clock" style="position: fixed; z-index: 999999; color: #fff; font-family: sans-serif; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 4px #000; font-size: 2.2rem; display: none;">00:00</div>');
         };
 
-        // 2. Оновлення стану годинника
         this.update = function() {
             var date = new Date();
             var h = date.getHours().toString().padStart(2, '0');
@@ -33,24 +31,21 @@
             else $('#lampa-custom-clock').hide();
         };
 
-        // 3. Створення меню налаштувань всередині панелі
-        this.renderMenu = function() {
-            var items = [
-                {
-                    title: 'Секунди',
-                    subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні',
-                    type: 'seconds'
-                },
-                {
-                    title: 'Позиція',
-                    subtitle: Lampa.Storage.get('clock_position', 'top_right'),
-                    type: 'position'
-                }
-            ];
-
+        this.openMenu = function() {
             Lampa.Select.show({
-                title: 'Налаштування годинника',
-                items: items,
+                title: 'Годинник',
+                items: [
+                    {
+                        title: 'Секунди',
+                        subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні',
+                        type: 'seconds'
+                    },
+                    {
+                        title: 'Позиція',
+                        subtitle: Lampa.Storage.get('clock_position', 'top_right'),
+                        type: 'position'
+                    }
+                ],
                 onSelect: function(item) {
                     if (item.type === 'seconds') {
                         var cur = Lampa.Storage.get('clock_seconds', 'true');
@@ -62,7 +57,7 @@
                         Lampa.Storage.set('clock_position', next);
                     }
                     Lampa.Noty.show('Збережено');
-                    _this.renderMenu(); // Перемальовуємо, щоб оновити статус "Так/Ні"
+                    _this.openMenu(); 
                 },
                 onBack: function() {
                     Lampa.Controller.toggle('settings');
@@ -73,22 +68,29 @@
 
     var plugin = new ClockPlugin();
 
-    // Головна ініціалізація
     function init() {
-        if (!window.Lampa) return;
-
-        // Реєструємо іконку в меню налаштувань
+        // Реєструємо компонент (щоб кнопка з'явилася)
         Lampa.Settings.addComponent({
             component: 'clock_cfg',
             name: 'Годинник у плеєрі',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" fill="none"/></svg>'
+            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>'
         });
 
-        // Цей обробник перехоплює момент, коли ти тиснеш на пункт меню (те, що на скріншоті)
+        // Слідкуємо за рендером налаштувань
         Lampa.Listener.follow('settings', function (e) {
-            if (e.type == 'render' && e.name == 'clock_cfg') {
-                // Замість порожньої панелі викликаємо рендер нашого списку
-                plugin.renderMenu();
+            if (e.type == 'render') {
+                // Чекаємо мить, поки Лампа намалює список
+                setTimeout(function() {
+                    var item = $('.settings__item[data-component="clock_cfg"]');
+                    if (item.length) {
+                        // Видаляємо всі стандартні події Лампи, які відкривають пусту панель
+                        item.off('hover:enter click').on('hover:enter click', function (event) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            plugin.openMenu(); // Викликаємо наше меню
+                        });
+                    }
+                }, 100);
             }
         });
 
@@ -96,7 +98,6 @@
         setInterval(plugin.update, 1000);
     }
 
-    // Запуск плагіна
     if (window.appready) init();
     else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') init(); });
 })();
