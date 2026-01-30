@@ -10,48 +10,55 @@
 
     function ServerSwitcher() {
         var _this = this;
+        var modalOpen = false;
 
         // 4) Покращена нормалізація URL для точного порівняння
         this.cleanUrl = function(url) {
             if(!url) return '';
-            return url.replace(/^https?:\/\//, '')
-                      .replace(/^www\./, '')
-                      .replace(/\/$/, '')
-                      .split(':')[0] // ігноруємо порт для порівняння
-                      .trim()
-                      .toLowerCase();
+            return url.toLowerCase()
+                .replace(/^https?:\/\//, '') // прибираємо протокол
+                .replace(/^www\./, '')       // прибираємо www
+                .replace(/\/$/, '')          // прибираємо слеш в кінці
+                .trim();
         };
 
         this.getCurrent = function () {
             var storageSource = Lampa.Storage.get('source');
+            // Якщо пусто, вважаємо що це lampa.mx (стандарт)
             if (!storageSource) return 'lampa.mx'; 
             return _this.cleanUrl(storageSource);
         };
 
         // 2) Виправлена перевірка доступності
         this.checkStatus = function (url, callback) {
+            var img = new Image();
             var timedOut = false;
+            
+            // Якщо сервер не відповідає за 3 сек - він офлайн
             var timer = setTimeout(function() {
                 timedOut = true;
+                img.src = '';
                 callback(false);
-            }, 5000);
+            }, 3000);
 
-            // Використовуємо Image як легкий пінгувальник
-            var img = new Image();
+            // Успішне завантаження = доступний
             img.onload = function() {
                 if (!timedOut) {
                     clearTimeout(timer);
                     callback(true);
                 }
             };
+            
+            // Помилка завантаження (404, CORS) = СЕРВЕР ДОСТУПНИЙ (бо він відповів помилкою)
             img.onerror = function() {
                 if (!timedOut) {
                     clearTimeout(timer);
-                    // Навіть помилка CORS означає, що сервер відповів (він онлайн)
                     callback(true); 
                 }
             };
-            img.src = url + '/favicon.ico?t=' + Date.now();
+
+            // Додаємо рандом, щоб уникнути кешу
+            img.src = url + '/favicon.ico?t=' + new Date().getTime();
         };
 
         this.build = function () {
@@ -73,6 +80,8 @@
             
             servers.forEach(function (server) {
                 var serverClean = _this.cleanUrl(server.url);
+                
+                // Не показуємо поточний сервер у списку вибору
                 if (serverClean === currentClean) return;
 
                 var item = $('<div class="server-switcher-item selector" data-url="' + server.url + '"></div>');
@@ -81,7 +90,7 @@
 
                 item.append(info).append(statusText);
                 
-                item.on('hover:enter', function () {
+                item.on('hover:enter click', function () {
                     if ($(this).hasClass('disabled')) return;
                     $('.server-switcher-item', list).removeClass('active');
                     $(this).addClass('active');
@@ -109,7 +118,7 @@
             html.append(list);
 
             var btn = $('<div class="button selector server-change-btn">Змінити сервер</div>');
-            btn.on('hover:enter', function () {
+            btn.on('hover:enter click', function () {
                 var selected = $('.server-switcher-item.active', html);
                 if (selected.length) {
                     _this.applyServer(selected.data('url'));
@@ -123,77 +132,95 @@
         };
 
         this.applyServer = function (newUrl) {
+            _this.close(); // Закриваємо перед рестартом
             Lampa.Noty.show('Збереження налаштувань...');
+
+            // Зберігаємо всюди де можна
             Lampa.Storage.set('source', newUrl);
             if(Lampa.Params) Lampa.Params.values['source'] = newUrl;
             Lampa.Storage.save(); 
 
             setTimeout(function () {
+                // 5) Андроїд рестарт (спроба)
                 if (typeof Lampa.Android !== 'undefined' && Lampa.Android.reload) {
                     Lampa.Android.reload();
                 } else {
                     window.location.reload();
                 }
-            }, 500);
+            }, 1000);
         };
 
-        // 3) Виправлене відкриття та керування фокусом
+        // 3) Функція закриття з поверненням фокусу
+        this.close = function() {
+            modalOpen = false;
+            Lampa.Modal.close();
+            Lampa.Controller.toggle('content');
+        };
+
         this.open = function () {
-            var render = _this.build();
-            
+            modalOpen = true;
             Lampa.Modal.open({
                 title: 'Зміна серверу',
-                html: render,
+                html: _this.build(),
                 size: 'medium',
                 mask: true,
                 onBack: function () {
-                    Lampa.Modal.close();
-                    Lampa.Controller.toggle('content');
+                    _this.close();
                 }
             });
-
-            // Надаємо контроль Lampa для навігації стрілками
-            Lampa.Controller.add('srv_modal', {
-                toggle: function () {
-                    Lampa.Controller.collectionSet(render);
-                    Lampa.Controller.set('srv_modal');
-                },
-                up: function () {
-                    Lampa.Navigator.move('up');
-                },
-                down: function () {
-                    Lampa.Navigator.move('down');
-                },
-                back: function () {
-                    Lampa.Modal.close();
-                    Lampa.Controller.toggle('content');
-                }
-            });
-            Lampa.Controller.toggle('srv_modal');
         };
+
+        // 3) Глобальний перехоплювач кнопки "Назад"
+        Lampa.Listener.follow('key', function (e) {
+            if (modalOpen && (e.code === 8 || e.code === 27 || e.name === 'back')) {
+                _this.close();
+                e.preventDefault(); // Блокуємо стандартну дію
+            }
+        });
     }
 
-    // Стилі (без змін)
+    // Стилі
     var css = `
         .server-switcher-modal { padding: 15px; }
         .server-switcher-label { color: #aaa; font-size: 0.8em; margin-bottom: 5px; text-transform: uppercase; }
         .server-switcher-current { color: #ffd948; font-size: 1.2em; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         .server-switcher-divider { display: none; } 
         .server-switcher-list { max-height: 40vh; overflow-y: auto; margin-bottom: 15px; }
+        
         .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-radius: 6px; margin-bottom: 6px; background: rgba(255,255,255,0.05); transition: all 0.2s; }
         .server-switcher-item.active { background: rgba(255,255,255,0.2); transform: scale(1.01); }
         .server-switcher-item.disabled { opacity: 0.4; filter: grayscale(1); pointer-events: none; }
+
         .server-info { display: flex; align-items: center; }
         .server-name { font-weight: bold; margin-left: 10px; color: #fff; }
         .server-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+        
         .dot-online { background: #4b6; box-shadow: 0 0 6px #4b6; }
         .status-online { color: #4b6; font-size: 0.8em; }
         .color-online { color: #4b6 !important; }
+        
         .dot-offline { background: #f44; }
         .status-offline { color: #f44; font-size: 0.8em; }
         .color-offline { color: #f44 !important; }
-        .server-change-btn { text-align: center; width: 100%; background-color: #e0c345; color: #000000; font-weight: bold; padding: 12px; border-radius: 8px; margin-top: 10px; font-size: 1.1em; }
-        .server-change-btn.focus { background-color: #fff !important; color: #000 !important; }
+
+        .server-change-btn {
+            text-align: center;
+            width: 100%;
+            background-color: #e0c345;
+            color: #000000;
+            font-weight: bold;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 1.1em;
+            transition: background 0.2s;
+        }
+        .server-change-btn.focus,
+        .server-change-btn:hover {
+            background-color: #c9af3d; 
+            color: #000000;
+            box-shadow: 0 0 8px rgba(224, 195, 69, 0.4);
+        }
     `;
     
     var style = document.createElement('style');
@@ -202,20 +229,35 @@
 
     var Switcher = new ServerSwitcher();
 
-    // 1) Коректна реєстрація в налаштуваннях
+    // 1) Радикальне вирішення проблеми кнопки в налаштуваннях
     function initSettings() {
-        Lampa.SettingsApi && Lampa.SettingsApi.addComponent({
+        var Settings = Lampa.SettingsApi || Lampa.Settings;
+        if (!Settings || !Settings.addComponent) return;
+
+        Settings.addComponent({
             component: 'srv_switch',
             name: 'Зміна серверу',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.67-1.5-1.5s.68-1.5 1.5-1.5 1.5.67 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5c-.82 0-1.5-.67-1.5-1.5S6.18 5.5 7 5.5s1.5.67 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>'
+            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.67-1.5-1.5s.68-1.5 1.5-1.5 1.5.67 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5c-.82 0-1.5-.67-1.5-1.5S6.18 5.5 7 5.5s1.5.67 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>'
         });
 
-        // Реєструємо компонент як об'єкт, щоб він не відкривав пусту панель
-        Lampa.Component.add('srv_switch', function(){
-            this.create = function(){
-                Switcher.open();
-                return null; // Повертаємо null, бо ми відкриваємо Modal замість панелі
-            };
+        // Слухаємо рендер налаштувань
+        Lampa.Listener.follow('settings', function (e) {
+            if (e.type == 'render') {
+                setTimeout(function() {
+                    // Знаходимо кнопку
+                    var item = $('.settings__item[data-component="srv_switch"]');
+                    if (item.length) {
+                        // Клонуємо елемент, щоб ЗНИЩИТИ всі події, які навішала Lampa (відкриття панелі)
+                        var newItem = item.clone();
+                        item.replaceWith(newItem);
+                        
+                        // Вішаємо свою подію
+                        newItem.on('hover:enter click', function () {
+                            Switcher.open();
+                        });
+                    }
+                }, 300); // Даємо час на рендер
+            }
         });
     }
 
