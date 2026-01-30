@@ -11,96 +11,98 @@
     function ServerSwitcher() {
         var _this = this;
 
-        // Чистимо URL для точного порівняння (прибираємо протокол і слеші)
+        // Чистка URL для порівняння
         this.cleanUrl = function(url) {
             if(!url) return '';
-            return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+            // Прибираємо http/https, www, і слеші в кінці
+            return url.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
         };
 
         this.getCurrent = function () {
-            // Отримуємо поточний, якщо пусто - намагаємось взяти з location, або дефолт
-            var current = Lampa.Storage.get('source');
-            if (!current) {
-                // Якщо source не заданий в стореджі, Lampa бере його з поточного вікна
-                // Спробуємо визначити, чи ми на одному з відомих серверів
-                var loc = window.location.origin;
-                current = loc;
+            // 1. Читаємо зі сховища
+            var storageSource = Lampa.Storage.get('source');
+            
+            // 2. Якщо в сховищі пусто, Лампа використовує дефолтний (зазвичай lampa.mx)
+            // Ми вважаємо, що якщо пусто - це перший сервер зі списку або lampa.mx
+            if (!storageSource) {
+                return 'lampa.mx'; 
             }
-            return _this.cleanUrl(current);
+            return _this.cleanUrl(storageSource);
         };
 
-        // Сучасна перевірка доступності
+        // "Пінг" через завантаження картинки (найстабільніший метод для TV/Android)
         this.checkStatus = function (url, callback) {
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function() { controller.abort(); }, 4000); // Таймаут 4 сек
+            var img = new Image();
+            var timedOut = false;
+            
+            var timer = setTimeout(function() {
+                timedOut = true;
+                img.src = '';
+                callback(false);
+            }, 3000); // 3 секунди таймаут
 
-            // Використовуємо mode: 'no-cors' для перевірки доступності навіть при CORS обмеженнях
-            // Але no-cors повертає opaque відповідь (status 0), тому ми вважаємо це успіхом для "пінгу"
-            fetch(url, { 
-                method: 'HEAD', 
-                mode: 'no-cors', 
-                signal: controller.signal,
-                cache: 'no-store'
-            })
-            .then(function() {
-                clearTimeout(timeoutId);
-                callback(true);
-            })
-            .catch(function(err) {
-                clearTimeout(timeoutId);
-                // Якщо помилка Mixed Content (https -> http), fetch впаде.
-                // Спробуємо простий запит через Image (піксель), як милиця
-                var img = new Image();
-                img.onload = function() { callback(true); };
-                img.onerror = function() { callback(false); }; // Тут вже точно помилка
-                img.src = url + '/favicon.ico?' + new Date().getTime();
-            });
+            img.onload = function() {
+                if (!timedOut) {
+                    clearTimeout(timer);
+                    callback(true);
+                }
+            };
+            
+            img.onerror = function() {
+                if (!timedOut) {
+                    clearTimeout(timer);
+                    // Часто фавіконки немає, але сервер відповів 404 - це означає він живий.
+                    // Але для надійності вважаємо помилку за доступність ТІЛЬКИ якщо це не повний відвал мережі.
+                    // На жаль, img.onerror не дає коду помилки. 
+                    // Тому для надійності: якщо помилка - пробуємо вважати що сервер недоступний,
+                    // або можна спробувати ще один запит. Але зазвичай це працює.
+                    // В даному випадку краще вважати false, щоб не посилати на мертвий сервер.
+                    callback(false);
+                }
+            };
+
+            // Додаємо випадкове число, щоб уникнути кешування
+            img.src = url + '/favicon.ico?t=' + new Date().getTime();
         };
 
         this.build = function () {
             var currentClean = this.getCurrent();
             var html = $('<div class="server-switcher-modal"></div>');
             
-            // Шукаємо красиву назву поточного сервера
+            // Пошук об'єкта поточного сервера для відображення назви
             var currentObj = servers.find(function(s) { 
                 return _this.cleanUrl(s.url) === currentClean; 
             });
             
-            // Якщо не знайшли в списку, показуємо як є, або 'Lampa (Default)' якщо це app
-            var currentDisplayName = currentObj ? currentObj.name : (currentClean || 'Default / Custom');
+            var currentDisplayName = currentObj ? currentObj.name : (currentClean || 'За замовчуванням');
 
             html.append('<div class="server-switcher-label">Поточний сервер:</div>');
             html.append('<div class="server-switcher-current">' + currentDisplayName + '</div>');
             html.append('<div class="server-switcher-divider"></div>');
-            html.append('<div class="server-switcher-label">Список серверів:</div>');
+            html.append('<div class="server-switcher-label">Доступні для зміни:</div>');
 
             var list = $('<div class="server-switcher-list"></div>');
             
             servers.forEach(function (server) {
                 var serverClean = _this.cleanUrl(server.url);
-                var isCurrent = serverClean === currentClean;
+                
+                // Фільтрація: НЕ показуємо поточний сервер у списку
+                if (serverClean === currentClean) return;
 
-                // Створюємо елемент
                 var item = $('<div class="server-switcher-item selector" data-url="' + server.url + '"></div>');
-                if (isCurrent) item.addClass('active-server-item'); // Маркуємо поточний, але не даємо клікати
-
                 var info = $('<div class="server-info"><span class="server-dot"></span><span class="server-name">' + server.name + '</span></div>');
                 var statusText = $('<span class="server-status">Перевірка...</span>');
 
                 item.append(info).append(statusText);
                 
-                // Події
                 item.on('hover:enter click', function () {
-                    // Забороняємо вибір поточного або недоступного
-                    if ($(this).hasClass('disabled') || $(this).hasClass('active-server-item')) return;
-                    
+                    if ($(this).hasClass('disabled')) return;
                     $('.server-switcher-item', list).removeClass('active');
                     $(this).addClass('active');
                 });
 
                 list.append(item);
 
-                // Запускаємо перевірку
                 _this.checkStatus(server.url, function(isOnline) {
                     var dot = item.find('.server-dot');
                     var nameEl = item.find('.server-name');
@@ -108,11 +110,11 @@
                     if(isOnline) {
                         statusText.text('Доступний').addClass('status-online');
                         dot.addClass('dot-online');
-                        nameEl.addClass('color-online'); // Колір назви
+                        nameEl.addClass('color-online');
                     } else {
                         statusText.text('Недоступний').addClass('status-offline');
                         dot.addClass('dot-offline');
-                        nameEl.addClass('color-offline'); // Колір назви
+                        nameEl.addClass('color-offline');
                         item.addClass('disabled').removeClass('selector');
                     }
                 });
@@ -120,14 +122,13 @@
 
             html.append(list);
 
-            // Кнопка зміни
             var btn = $('<div class="button selector server-change-btn">Змінити сервер</div>');
             btn.on('hover:enter click', function () {
                 var selected = $('.server-switcher-item.active', html);
                 if (selected.length) {
                     _this.applyServer(selected.data('url'));
                 } else {
-                    Lampa.Noty.show('Оберіть новий доступний сервер зі списку');
+                    Lampa.Noty.show('Оберіть сервер зі списку');
                 }
             });
 
@@ -136,40 +137,32 @@
         };
 
         this.applyServer = function (newUrl) {
-            try {
-                Lampa.Modal.close();
-                Lampa.Noty.show('Зміна сервера... Зачекайте.');
+            Lampa.Modal.close();
+            Lampa.Noty.show('Збереження та перезапуск...');
 
-                // 1. Встановлюємо значення
-                Lampa.Storage.set('source', newUrl);
-                
-                // 2. Якщо мови немає, ставимо UK
-                if(!Lampa.Storage.get('language')) Lampa.Storage.set('language', 'uk');
+            // 1. Зберігаємо в Storage
+            Lampa.Storage.set('source', newUrl);
+            
+            // 2. Примусово оновлюємо Params (для деяких версій Android app)
+            if(Lampa.Params) Lampa.Params.values['source'] = newUrl;
 
-                // 3. Примусове збереження (важливо для Android TV)
-                Lampa.Storage.save(); 
+            // 3. Зберігаємо
+            Lampa.Storage.save(); 
 
-                // 4. Затримка перед рестартом, щоб сторедж встиг записатись на диск
-                setTimeout(function () {
-                    // Спроба використати нативний релоад Android клієнта
-                    if (typeof Lampa.Android !== 'undefined' && Lampa.Android.reload) {
-                        Lampa.Android.reload();
-                    } 
-                    // Спроба використати утиліту Лампи
-                    else if (Lampa.Utils && Lampa.Utils.reload) {
-                        // Перевіряємо, щоб це не викликало циклічний рестарт
-                        // Utils.reload зазвичай робить location.reload, але краще явно
-                        window.location.reload();
-                    } 
-                    // Стандартний релоад
-                    else {
+            // 4. Перезапуск з затримкою
+            setTimeout(function () {
+                // Спроба використати API Андроїда для зміни URL (якщо існує плагін)
+                // Або просто перезавантаження
+                try {
+                     if (window.Lampa && window.Lampa.Android && window.Lampa.Android.reload) {
+                        window.Lampa.Android.reload();
+                    } else {
                         window.location.reload();
                     }
-                }, 1000); // Збільшив затримку до 1с для надійності
-            } catch (e) {
-                console.log('Switcher Error:', e);
-                window.location.reload();
-            }
+                } catch(e) {
+                    window.location.reload();
+                }
+            }, 1000);
         };
 
         this.open = function () {
@@ -180,34 +173,30 @@
                 mask: true,
                 onBack: function () {
                     Lampa.Modal.close();
-                    // Важливо: повертаємо фокус на контент, інакше пульт не працює
+                    // Примусово повертаємо фокус, інакше пульт перестане працювати
                     Lampa.Controller.toggle('content'); 
                 }
             });
         };
     }
 
-    // CSS стилі
     var css = `
-        .server-switcher-modal { padding: 10px; }
+        .server-switcher-modal { padding: 15px; }
         .server-switcher-label { color: #aaa; font-size: 0.8em; margin-bottom: 5px; text-transform: uppercase; }
-        .server-switcher-current { color: #fcd462; font-size: 1.3em; font-weight: bold; margin-bottom: 12px; }
-        .server-switcher-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
+        .server-switcher-current { color: #ffd948; font-size: 1.2em; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .server-switcher-divider { display: none; } /* Сховав, замінив бордером вище */
         .server-switcher-list { max-height: 40vh; overflow-y: auto; margin-bottom: 15px; }
         
-        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-radius: 6px; margin-bottom: 4px; background: rgba(255,255,255,0.05); transition: background 0.2s; }
+        .server-switcher-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 10px; border-radius: 6px; margin-bottom: 6px; background: rgba(255,255,255,0.05); transition: all 0.2s; }
         
-        /* Ховер ефект для активного вибору */
-        .server-switcher-item.active { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); }
-        .server-switcher-item.disabled { opacity: 0.4; pointer-events: none; }
-        .server-switcher-item.active-server-item { border: 1px solid #fcd462; opacity: 0.8; }
+        .server-switcher-item.active { background: rgba(255,255,255,0.2); transform: scale(1.02); }
+        .server-switcher-item.disabled { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
 
         .server-info { display: flex; align-items: center; }
-        .server-name { font-weight: bold; margin-left: 10px; color: #fff; transition: color 0.3s; }
+        .server-name { font-weight: bold; margin-left: 10px; color: #fff; }
         .server-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
         
-        /* Кольори статусів */
-        .dot-online { background: #4b6; box-shadow: 0 0 5px #4b6; }
+        .dot-online { background: #4b6; box-shadow: 0 0 6px #4b6; }
         .status-online { color: #4b6; font-size: 0.8em; }
         .color-online { color: #4b6 !important; }
         
@@ -215,22 +204,25 @@
         .status-offline { color: #f44; font-size: 0.8em; }
         .color-offline { color: #f44 !important; }
 
-        /* Стиль кнопки Змінити сервер */
+        /* Стиль кнопки - темніший жовтий */
         .server-change-btn {
             text-align: center;
             width: 100%;
-            background-color: #fcd462;
+            background-color: #e0c345; /* Темніший жовтий */
             color: #000000;
             font-weight: bold;
             padding: 12px;
             border-radius: 8px;
-            transition: background-color 0.2s;
             margin-top: 10px;
+            font-size: 1.1em;
+            transition: background 0.2s;
         }
+        /* Ховер ефект - ще трохи темніший */
         .server-change-btn.focus,
         .server-change-btn:hover {
-            background-color: #eec242; /* Трохи темніший жовтий */
+            background-color: #c9af3d; 
             color: #000000;
+            box-shadow: 0 0 8px rgba(224, 195, 69, 0.4);
         }
     `;
     
@@ -240,8 +232,8 @@
 
     var Switcher = new ServerSwitcher();
 
+    // --- Ініціалізація в налаштуваннях ---
     function initSettings() {
-        // Ми додаємо компонент, щоб він з'явився в списку
         var Settings = Lampa.SettingsApi || Lampa.Settings;
         if (!Settings || !Settings.addComponent) return;
 
@@ -251,27 +243,30 @@
             icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 15v4H5v-4h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 18.5c-.82 0-1.5-.67-1.5-1.5s.68-1.5 1.5-1.5 1.5.67 1.5 1.5-.68 1.5-1.5 1.5zM19 5v4H5V5h14m1-2H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 8.5c-.82 0-1.5-.67-1.5-1.5S6.18 5.5 7 5.5s1.5.67 1.5 1.5-.68 1.5-1.5 1.5z"/></svg>'
         });
 
-        // ХАК: Щоб відкрити модалку одразу, а не заходити в підменю
-        // Слухаємо подію рендеру налаштувань
-        Lampa.Listener.follow('settings', function (e) {
-            if (e.type == 'render') {
-                setTimeout(function() {
-                    // Шукаємо наш елемент в DOM налаштувань
-                    var item = $('.settings__item[data-component="srv_switch"]');
-                    if (item.length) {
-                        // Видаляємо старі події і ставимо свою
-                        item.off('hover:enter click');
-                        item.on('hover:enter click', function (e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            Switcher.open();
-                        });
-                    }
-                }, 200); // Невелика затримка, щоб DOM побудувався
+        // Глобальний перехоплювач кліку для налаштувань.
+        // Це вирішує проблему відкриття пустої панелі.
+        // Ми слухаємо клік на рівні body, але фільтруємо по data-component.
+        $('body').on('click', '.settings__item[data-component="srv_switch"]', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation(); // Зупиняємо будь-яку обробку Лампою
+            Switcher.open();
+            return false;
+        });
+        
+        // Дублюємо для клавіатури/пульту (enter)
+        $('body').on('keyup', '.settings__item[data-component="srv_switch"]', function(e) {
+            if(e.keyCode === 13) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                Switcher.open();
+                return false;
             }
         });
     }
 
+    // --- Ініціалізація в меню (ліворуч) ---
     function initMenu() {
         Lampa.Listener.follow('app', function (e) {
             if (e.type == 'ready') {
@@ -282,6 +277,7 @@
         });
     }
 
+    // --- Ініціалізація в шапці ---
     function initHeader() {
         Lampa.Listener.follow('app', function(e) {
             if(e.type == 'ready') {
