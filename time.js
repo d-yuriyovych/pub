@@ -2,98 +2,103 @@
     'use strict';
 
     function ClockPlugin() {
-        // 1. Стилі: Білий текст, жирний, з тінню
-        if (!$('#clock-style').length) {
-            $('head').append(`<style id="clock-style">
-                #lampa-custom-clock {
-                    position: fixed;
-                    z-index: 999999;
-                    color: #fff;
-                    font-family: sans-serif;
-                    font-weight: bold;
-                    pointer-events: none;
-                    text-shadow: 2px 2px 4px #000;
-                    font-size: 2.5rem;
-                    display: none;
-                }
-            </style>`);
-        }
+        var _this = this;
 
-        var clock_html = $('<div id="lampa-custom-clock">00:00</div>');
-        $('body').append(clock_html);
+        // Отримуємо збережені налаштування
+        this.params = {
+            seconds: Lampa.Storage.get('clock_plugin_seconds', 'true'),
+            position: Lampa.Storage.get('clock_plugin_position', 'top_right')
+        };
 
-        function update() {
+        // Створення годинника
+        this.initClock = function() {
+            if ($('#lampa-custom-clock').length) return;
+            $('body').append('<div id="lampa-custom-clock" style="position: fixed; z-index: 999999; color: #fff; font-family: sans-serif; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 4px #000; font-size: 2.2rem; display: none;">00:00</div>');
+        };
+
+        this.update = function() {
             var date = new Date();
             var h = date.getHours().toString().padStart(2, '0');
             var m = date.getMinutes().toString().padStart(2, '0');
             var s = date.getSeconds().toString().padStart(2, '0');
-            var show_sec = Lampa.Storage.get('clock_seconds', 'true') === 'true';
-            clock_html.text(h + ':' + m + (show_sec ? ':' + s : ''));
             
-            var is_player = $('.player').length > 0 || $('.pjs-video-container').length > 0 || $('.lampa-player').length > 0 || window.location.hash.indexOf('player') > -1;
-            if (is_player) clock_html.show();
-            else clock_html.hide();
-        }
-
-        function applyPosition() {
-            var pos = Lampa.Storage.get('clock_position', 'top_right');
-            var css = {top: 'auto', bottom: 'auto', left: 'auto', right: 'auto'};
-            if (pos === 'top_right') { css.top = '40px'; css.right = '50px'; }
-            else if (pos === 'top_left') { css.top = '40px'; css.left = '50px'; }
-            else if (pos === 'bottom_right') { css.bottom = '50px'; css.right = '50px'; }
-            else if (pos === 'bottom_left') { css.bottom = '50px'; css.left = '50px'; }
-            clock_html.css(css);
-        }
-
-        setInterval(update, 1000);
-        applyPosition();
-
-        // 2. ДОДАВАННЯ КНОПКИ ЧЕРЕЗ СКРІПТОВИЙ ІН'ЄКТОР
-        var addSettingsBtn = function() {
-            if ($('.settings-list').length && !$('.data-clock-plugin').length) {
-                var btn = $('<div class="settings-list__item selector data-clock-plugin"><div class="settings-list__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div><div class="settings-list__name">ГОДИННИК (НАЛАШТУВАТИ)</div></div>');
-                
-                btn.on('hover:enter', function () {
-                    Lampa.Select.show({
-                        title: 'Налаштування годинника',
-                        items: [
-                            {
-                                title: 'Секунди',
-                                subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Увімкнено' : 'Вимкнено',
-                                onSelect: function() {
-                                    var cur = Lampa.Storage.get('clock_seconds', 'true');
-                                    Lampa.Storage.set('clock_seconds', cur === 'true' ? 'false' : 'true');
-                                    update();
-                                    Lampa.Noty.show('Збережено');
-                                }
-                            },
-                            {
-                                title: 'Позиція',
-                                subtitle: Lampa.Storage.get('clock_position', 'top_right'),
-                                onSelect: function() {
-                                    var list = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
-                                    var cur = Lampa.Storage.get('clock_position', 'top_right');
-                                    var next = list[(list.indexOf(cur) + 1) % list.length];
-                                    Lampa.Storage.set('clock_position', next);
-                                    applyPosition();
-                                    Lampa.Noty.show('Змінено');
-                                }
-                            }
-                        ],
-                        onBack: function() {
-                            Lampa.Controller.toggle('settings');
-                        }
-                    });
-                });
-                $('.settings-list').prepend(btn); // Вставляємо ПЕРШИМ у список
-                Lampa.Controller.enable('settings'); // Оновлюємо контролер, щоб кнопка стала клікабельною
-            }
+            var timeStr = h + ':' + m + (_this.params.seconds === 'true' ? ':' + s : '');
+            $('#lampa-custom-clock').text(timeStr);
+            
+            // Відображення тільки в плеєрі
+            var is_player = $('.player').length > 0 || $('.pjs-video-container').length > 0 || window.location.hash.indexOf('player') > -1;
+            if (is_player) $('#lampa-custom-clock').show();
+            else $('#lampa-custom-clock').hide();
         };
 
-        // Слідкуємо за відкриттям меню налаштувань через інтервал (найтупіший, але найнадійніший метод)
-        setInterval(addSettingsBtn, 500);
+        this.applyPosition = function() {
+            var pos = _this.params.position;
+            var css = {top: 'auto', bottom: 'auto', left: 'auto', right: 'auto'};
+            if (pos === 'top_right') { css.top = '30px'; css.right = '40px'; }
+            else if (pos === 'top_left') { css.top = '30px'; css.left = '40px'; }
+            else if (pos === 'bottom_right') { css.bottom = '40px'; css.right = '40px'; }
+            else if (pos === 'bottom_left') { css.bottom = '40px'; css.left = '40px'; }
+            $('#lampa-custom-clock').css(css);
+        };
+
+        this.openSettings = function() {
+            Lampa.Select.show({
+                title: 'Налаштування годинника',
+                items: [
+                    { title: 'Секунди', subtitle: _this.params.seconds === 'true' ? 'Так' : 'Ні', value: 'seconds' },
+                    { title: 'Розташування', subtitle: _this.params.position, value: 'position' }
+                ],
+                onSelect: function(item) {
+                    if (item.value === 'seconds') {
+                        _this.params.seconds = _this.params.seconds === 'true' ? 'false' : 'true';
+                        Lampa.Storage.set('clock_plugin_seconds', _this.params.seconds);
+                    } else {
+                        var p = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
+                        _this.params.position = p[(p.indexOf(_this.params.position) + 1) % p.length];
+                        Lampa.Storage.set('clock_plugin_position', _this.params.position);
+                        _this.applyPosition();
+                    }
+                    Lampa.Noty.show('Оновлено');
+                    _this.openSettings(); // Перевідкриваємо для оновлення тексту
+                },
+                onBack: function() {
+                    Lampa.Controller.toggle('settings');
+                }
+            });
+        };
     }
 
-    if (window.appready) ClockPlugin();
-    else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') ClockPlugin(); });
+    var plugin = new ClockPlugin();
+
+    function init() {
+        // Реєструємо компонент у налаштуваннях
+        var Settings = Lampa.SettingsApi || Lampa.Settings;
+        if (Settings && Settings.addComponent) {
+            Settings.addComponent({
+                component: 'clock_cfg',
+                name: 'Годинник у плеєрі',
+                icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>'
+            });
+
+            // Перехоплюємо рендер налаштувань для заміни події кліку
+            Lampa.Listener.follow('settings', function (e) {
+                if (e.type == 'render') {
+                    setTimeout(function() {
+                        var item = $('.settings__item[data-component="clock_cfg"]');
+                        if (item.length) {
+                            var newItem = item.clone();
+                            item.replaceWith(newItem);
+                            newItem.on('hover:enter click', function () { plugin.openSettings(); });
+                        }
+                    }, 200);
+                }
+            });
+        }
+
+        plugin.initClock();
+        plugin.applyPosition();
+        setInterval(plugin.update, 1000);
+    }
+
+    if (window.Lampa) init();
 })();
