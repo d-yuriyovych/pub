@@ -1,67 +1,8 @@
 (function () {
     'use strict';
 
-    function ClockPlugin(object) {
-        var _this = this;
-        var scroll = new Lampa.Scroll({mask: true, over: true});
-        var items = [];
-        var html = $('<div></div>');
-
-        // Це те, що малює вміст правої панелі
-        this.create = function () {
-            var _this = this;
-            var settings = [
-                {
-                    title: 'Відображати секунди',
-                    param: 'clock_seconds',
-                    subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні'
-                },
-                {
-                    title: 'Розташування',
-                    param: 'clock_position',
-                    subtitle: Lampa.Storage.get('clock_position', 'top_right')
-                }
-            ];
-
-            settings.forEach(function (list) {
-                var item = Lampa.Template.get('settings_item', list);
-                
-                item.on('hover:enter', function () {
-                    if (list.param === 'clock_seconds') {
-                        var cur = Lampa.Storage.get('clock_seconds', 'true');
-                        Lampa.Storage.set('clock_seconds', cur === 'true' ? 'false' : 'true');
-                    } else {
-                        var p = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
-                        var curP = Lampa.Storage.get('clock_position', 'top_right');
-                        Lampa.Storage.set('clock_position', p[(p.indexOf(curP) + 1) % p.length]);
-                    }
-                    Lampa.Noty.show('Збережено');
-                    // Оновлюємо панель, щоб змінився текст subtitle
-                    Lampa.Controller.render();
-                });
-
-                html.append(item);
-                items.push(item);
-            });
-
-            scroll.append(html);
-        };
-
-        this.render = function () {
-            return scroll.render();
-        };
-
-        this.pause = function () {};
-        this.stop = function () {};
-        this.destroy = function () {
-            scroll.destroy();
-            html.remove();
-            items = [];
-        };
-    }
-
-    // Логіка самого годинника (те, що ти бачиш у плеєрі)
-    function initLogic() {
+    // Функція годинника
+    function startClock() {
         if (!$('#lampa-custom-clock').length) {
             $('body').append('<div id="lampa-custom-clock" style="position: fixed; z-index: 999999; color: #fff; font-family: sans-serif; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 4px #000; font-size: 2.2rem; display: none;">00:00</div>');
         }
@@ -85,20 +26,46 @@
         }, 1000);
     }
 
-    function start() {
-        // Реєструємо компонент — це ПРИБИРАЄ порожнечу
-        Lampa.Component.add('clock_cfg', ClockPlugin);
+    function init() {
+        if (typeof Lampa.SettingsApi !== 'undefined') {
+            // 1. Створюємо розділ
+            Lampa.SettingsApi.addComponent({
+                component: 'clock_cfg',
+                name: 'Годинник у плеєрі',
+                icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
+            });
 
-        // Додаємо кнопку в налаштування
-        Lampa.SettingsApi.addComponent({
-            component: 'clock_cfg',
-            name: 'Годинник у плеєрі',
-            icon: '<svg height="24" viewBox="0 0 24 24" width="24" fill="white"><circle cx="12" cy="12" r="10" stroke="white" stroke-width="2" fill="none"/><polyline points="12 6 12 12 16 14" stroke="white" stroke-width="2" fill="none"/></svg>'
-        });
+            // 2. Додаємо пункти. В ОФІЦІЙНОМУ API це робиться ТАК:
+            Lampa.SettingsApi.add({
+                title: 'Відображати секунди',
+                component: 'clock_cfg',
+                name: 'clock_seconds',
+                type: 'select',
+                values: {
+                    'true': 'Так',
+                    'false': 'Ні'
+                },
+                default: 'true'
+            });
 
-        initLogic();
+            Lampa.SettingsApi.add({
+                title: 'Розташування',
+                component: 'clock_cfg',
+                name: 'clock_position',
+                type: 'select',
+                values: {
+                    'top_right': 'Зверху справа',
+                    'top_left': 'Зверху зліва',
+                    'bottom_right': 'Знизу справа',
+                    'bottom_left': 'Знизу зліва'
+                },
+                default: 'top_right'
+            });
+            
+            startClock();
+        }
     }
 
-    if (window.appready) start();
-    else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') start(); });
+    if (window.appready) init();
+    else Lampa.Listener.follow('app', function (e) { if (e.type == 'ready') init(); });
 })();
