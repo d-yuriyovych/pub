@@ -16,7 +16,6 @@
                     font-size: 2.5rem;
                     display: none;
                 }
-                .lampa-clock-setup-icon { color: #ff5722 !important; }
             </style>`);
         }
 
@@ -31,9 +30,7 @@
             var show_sec = Lampa.Storage.get('clock_seconds', 'true') === 'true';
             clock_html.text(h + ':' + m + (show_sec ? ':' + s : ''));
             
-            // Перевірка стану плеєра
             var is_player = $('.player').length > 0 || $('.pjs-video-container').length > 0 || $('.lampa-player').length > 0 || window.location.hash.indexOf('player') > -1;
-            
             if (is_player) clock_html.show();
             else clock_html.hide();
         }
@@ -51,52 +48,50 @@
         setInterval(update, 1000);
         applyPosition();
 
-        // 2. Найнадійніший спосіб додати в налаштування
-        Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'component' && e.name === 'settings') {
-                var addSettingsButton = function() {
-                    var menu = e.object.find('.settings-list');
-                    if (menu.length && !menu.find('.data-clock-plugin').length) {
-                        var btn = $('<div class="settings-list__item selector data-clock-plugin"><div class="settings-list__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div><div class="settings-list__name">Годинник (Плагін)</div></div>');
-                        
-                        btn.on('hover:enter', function () {
-                            Lampa.Select.show({
-                                title: 'Налаштування годинника',
-                                items: [
-                                    {
-                                        title: 'Відображати секунди',
-                                        subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Так' : 'Ні',
-                                        onSelect: function() {
-                                            var cur = Lampa.Storage.get('clock_seconds', 'true');
-                                            Lampa.Storage.set('clock_seconds', cur === 'true' ? 'false' : 'true');
-                                            update();
-                                            Lampa.Noty.show('Збережено');
-                                        }
-                                    },
-                                    {
-                                        title: 'Змінити кут',
-                                        subtitle: Lampa.Storage.get('clock_position', 'top_right'),
-                                        onSelect: function() {
-                                            var list = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
-                                            var cur = Lampa.Storage.get('clock_position', 'top_right');
-                                            var next = list[(list.indexOf(cur) + 1) % list.length];
-                                            Lampa.Storage.set('clock_position', next);
-                                            applyPosition();
-                                            Lampa.Noty.show('Позиція: ' + next);
-                                        }
-                                    }
-                                ],
-                                onBack: function() {
-                                    Lampa.Controller.toggle('settings');
+        // 2. ДОДАВАННЯ КНОПКИ ЧЕРЕЗ СКРІПТОВИЙ ІН'ЄКТОР
+        var addSettingsBtn = function() {
+            if ($('.settings-list').length && !$('.data-clock-plugin').length) {
+                var btn = $('<div class="settings-list__item selector data-clock-plugin"><div class="settings-list__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div><div class="settings-list__name">ГОДИННИК (НАЛАШТУВАТИ)</div></div>');
+                
+                btn.on('hover:enter', function () {
+                    Lampa.Select.show({
+                        title: 'Налаштування годинника',
+                        items: [
+                            {
+                                title: 'Секунди',
+                                subtitle: Lampa.Storage.get('clock_seconds', 'true') === 'true' ? 'Увімкнено' : 'Вимкнено',
+                                onSelect: function() {
+                                    var cur = Lampa.Storage.get('clock_seconds', 'true');
+                                    Lampa.Storage.set('clock_seconds', cur === 'true' ? 'false' : 'true');
+                                    update();
+                                    Lampa.Noty.show('Збережено');
                                 }
-                            });
-                        });
-                        menu.append(btn);
-                    }
-                };
-                setTimeout(addSettingsButton, 200);
+                            },
+                            {
+                                title: 'Позиція',
+                                subtitle: Lampa.Storage.get('clock_position', 'top_right'),
+                                onSelect: function() {
+                                    var list = ['top_right', 'top_left', 'bottom_right', 'bottom_left'];
+                                    var cur = Lampa.Storage.get('clock_position', 'top_right');
+                                    var next = list[(list.indexOf(cur) + 1) % list.length];
+                                    Lampa.Storage.set('clock_position', next);
+                                    applyPosition();
+                                    Lampa.Noty.show('Змінено');
+                                }
+                            }
+                        ],
+                        onBack: function() {
+                            Lampa.Controller.toggle('settings');
+                        }
+                    });
+                });
+                $('.settings-list').prepend(btn); // Вставляємо ПЕРШИМ у список
+                Lampa.Controller.enable('settings'); // Оновлюємо контролер, щоб кнопка стала клікабельною
             }
-        });
+        };
+
+        // Слідкуємо за відкриттям меню налаштувань через інтервал (найтупіший, але найнадійніший метод)
+        setInterval(addSettingsBtn, 500);
     }
 
     if (window.appready) ClockPlugin();
